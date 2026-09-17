@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="assets/ultron-banner.svg" alt="ULTRON Banner" width="100%"/>
+
 # 🛡️ ULTRON
 
 ## Unified Layer for Threat Response, Observability & Network Defense
