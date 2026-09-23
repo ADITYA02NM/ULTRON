@@ -1,297 +1,315 @@
-# ULTRON — Architecture (In-Depth)
+# ULTRON — System Architecture
 
-> **Companion docs:** [`README.md`](README.md) (pitch) · [`dashboard.md`](dashboard.md) (UI spec) · [`promt.md`](promt.md) (AI operating brief) · [`blackhat.md`](blackhat.md) (full spec)
+> In-depth architecture for a **smart-house** Phase 1: **detection · governance · alert management**.  
+> Companion docs: [`dashboard.md`](dashboard.md) · [`promt.md`](promt.md) · [`blackhat.md`](blackhat.md)
 
 ---
 
 ## 1. System Overview
 
-ULTRON is a **two-plane, five-node IoT cybersecurity ecosystem**:
+ULTRON is a **three-pillar, zero-cloud** IoT security ecosystem for the **smart house** — cameras, locks, hubs, sensors, and the edge boxes that talk to them:
 
-- **Production plane (wired):** observes servers, runs detection + governance.
-- **Management plane (WiFi):** operators reach the dashboard; never touches production traffic.
-- **Sensor plane (ESP32):** physical indicators + tamper tripwires.
+| Pillar | Node | Responsibility |
+|--------|------|----------------|
+| **Governance** | Pi4 8GB `.1` | MQTT bus, risk engine, scanners, premium dashboard, health, evidence |
+| **Detection** | Pi3B+ `.2` | Suricata IDS, Cowrie, canaries, lure, passive WiFi, tripwire sense |
+| **Alert** | Pi3B+ `.3` | Alert manager (SMTP), daily reports, management AP |
+
+Plus ESP32-C3 (LED/OLED indicator → Pi4 serial) and ESP32-WROOM (GPIO tripwire, **no WiFi**).
 
 ```
-                      ┌──────────────────────────────────────────────┐
-                      │              PRODUCTION LAN                  │
-                      │            192.168.100.0/24                  │
-                      │                                             │
-   Servers ──eth──▶   │   .10+  monitored hosts                     │
-   (.10 … .x)         │      │ span/mirror / scan targets           │
-                      │      ▼                                      │
-                      │   ┌────────┐     ┌────────┐    ┌────────┐   │
-                      │   │  Pi4   │     │  Pi3a  │    │  Pi3b  │   │
-                      │   │ Brain  │◀───▶│ Attack │    │  IDS   │   │
-                      │   │  .1    │     │  .2    │    │  .3    │   │
-                      │   └────┬───┘     └───┬────┘    └───┬────┘   │
-                      │        │ MQTT        │             │        │
-                      │        ▼             ▼             ▼        │
-                      │   Mosquitto bus (ultron/#)                  │
-                      └──────────────────────┬───────────────────────┘
-                                             │
-              ┌──────────────────────────────┼──────────────────────────────┐
-              │ USB serial                   │ GPIO sense                  │ WiFi (mgmt)
-              ▼                              ▼                              ▼
-        ┌───────────┐                 ┌─────────────┐              ┌────────────────┐
-        │ ESP32-C3  │                 │ ESP32-WROOM │              │ Operator laptop│
-        │ NeoPixel  │                 │ Tripwire    │              │ SENTINEL-SECURE│
-        │ + OLED    │                 │ + buzzer    │              │ 192.168.50.0/24│
-        └───────────┘                 └─────────────┘              └────────────────┘
+Detection sensors ──► MQTT (Pi4) ──► Risk Engine ──┬──► Dashboard ( :8080 )
+                                                    ├──► LED / OLED
+                                                    └──► Alert Manager ──► Email + Reports
 ```
+
+**Phase 1 = notify.** Automated response and threat hunting are Phase 2/3 only.
 
 ---
 
 ## 2. Dual-Network Isolation
 
-| Property | Production LAN | Management LAN |
-|----------|----------------|----------------|
-| Subnet | `192.168.100.0/24` | `192.168.50.0/24` |
-| Medium | Ethernet (5-port switch) | WiFi (`SENTINEL-SECURE`, AC600 on Pi3b) |
-| Carries | Scan traffic, IDS taps, MQTT, SSH mgmt | Dashboard HTTP/WebSocket only |
-| Exposure | Servers + 3 nodes | Operator devices only |
-| Compromise impact | Monitoring continues (fail-visible) | Dashboard access lost only |
+| Plane | Subnet | Medium | Purpose |
+|-------|--------|--------|---------|
+| **Production** | `192.168.100.0/24` | Ethernet switch | Smart-home sensors/hosts under watch, MQTT, dashboard |
+| **Management** | `192.168.50.0/24` | WiFi AP `SENTINEL-SECURE` (Pi3b AC600) | Operator laptop → **only** Pi4:8080 |
 
-**Why:** an attacker on the guest/management WiFi cannot sniff production monitoring. The dashboard is the *only* intentionally reachable service across planes, and it is read-mostly (acknowledgements write back over the same authenticated path).
-
-**Firewall defaults (all Pi nodes):**
+**Firewall sketch (nftables, deny-first):**
 
 ```
-# fail-closed baseline
-INPUT   DROP
-OUTPUT  ACCEPT          # nodes initiate outbound
-# allow: established, lo, SSH from mgmt, Pi4:8080 from mgmt
-# Pi4:   1883/tcp (MQTT) only from 192.168.100.0/24
+# production: allow established, lo, SSH from mgmt, Pi4:8080 from mgmt
+# Pi4: 1883/tcp MQTT only from 192.168.100.0/24
+# Pi3b WiFi clients: forward only to 192.168.100.1:8080
+# default drop; log drops to ring buffer
 ```
 
 ---
 
 ## 3. Node Deep-Dives
 
-### 3.1 Pi4 — Brain (`192.168.100.1`)
+### 3.1 Pi4 — Governance (`192.168.100.1`)
 
 | Service | Tech | In | Out | Failure mode |
 |---------|------|----|-----|--------------|
-| `mosquitto` | Mosquitto | TCP 1883 | — | health check restarts; dashboard shows `MQTT DEGRADED` |
-| `sentinel-risk` | Python | `ultron/*` events | `ultron/risk/score`, `ultron/risk/band` (retained) | last score held; decay timer logs gaps |
-| `sentinel-scan` | Python + nmap/Nuclei/Lynis | cron/timer | `ultron/scan/#`, SQLite | next cycle retries; partial results kept |
-| `sentinel-alert` | Python | `ultron/alert/#`, risk bands | SQLite, SMTP, WebSocket, serial → ESP32-C3 | queue on disk; email failures retried 3× |
-| `sentinel-dashboard` | Python (aiohttp/fastapi) + static `index.html` | WS from MQTT | browser :8080 | page serves last-known; banner `LIVE/DEGRADED` |
-| `sentinel-report` | Python | SQLite | `reports/*.md` daily | missed run caught up once |
-| `sentinel-heal` | Python + systemd | unit states | restart actions, `ultron/health` | itself supervised by systemd |
+| `mosquitto` | Mosquitto | TCP 1883 / WS 9001 | — | health restart; dashboard `MQTT DEGRADED` |
+| `sentinel-risk` | Python | `ultron/*` | `ultron/risk/score`, `ultron/risk/band` (retained) | hold last score; log decay gaps |
+| `sentinel-scan` | Python + nmap/Nuclei/Lynis | timer 15m | `ultron/scan/#`, SQLite | retry next cycle |
+| `sentinel-dashboard` | Python + static `index.html` | WS←MQTT | browser `:8080` | serve last-known + STALE banner |
+| `sentinel-heal` | Python + systemd | unit states | restart actions, `ultron/health/pi4` | supervised by systemd |
+| evidence | cron + SQLite | DB | `reports/`, optional pendrive | catch-up once |
 
-**Datastore:** single SQLite file (`~/ultron/ultron.db`) — events, scores, scans, acks, reports index. WAL mode. Nightly `.backup`.
+**Datastore:** `~/ultron/ultron.db` — events, scores, scans, acks. WAL. Nightly backup.
 
-### 3.2 Pi3a — Attack / Deception (`192.168.100.2`)
+### 3.2 Pi3a — Detection (`192.168.100.2`)
 
-| Service | Role | Egress topic |
-|---------|------|--------------|
-| Cowrie | SSH/Telnet honeypot (22/23), JSON logs | `ultron/cowrie/#` |
-| auditd + canary bridge | watches planted files | `ultron/canary/#` |
-| Web lure | decoy login, logs POSTs | `ultron/lure/#` |
-| TL-WN722N | monitor mode (**LAB only**) | `ultron/wifi/#` (LAB) |
-| GPIO listener | ESP32-WROOM sense → Pi | `ultron/tripwire/pi3a` |
+| Service | Role | Egress |
+|---------|------|--------|
+| Suricata | signature **IDS** (not IPS) | `ultron/suricata/#` via aggregator |
+| Cowrie | SSH/Telnet honeypot 22/23 | `ultron/cowrie/#` |
+| auditd + canary bridge | planted file access | `ultron/canary/#` |
+| Web lure | decoy login POST log | `ultron/lure/#` |
+| TL-WN722N | **passive** monitor (rogue AP) | `ultron/wifi/#` |
+| GPIO listener | case sense | `ultron/tripwire/pi3a` |
 
-**Deception principles:** banners look real, sessions are fully scripted, no shell escapes, disk logs rotated daily and mirrored to Pi4 evidence vault.
+**Deception rules:** realistic banners; scripted sessions; no shell escapes; logs rotated + mirrored to Pi4 evidence.
 
-### 3.3 Pi3b — IDS / Gateway (`192.168.100.3`)
+**IDS placement:** default = mirror/span of switch (zero inline risk). Inline = Phase 2 consideration only.
+
+### 3.3 Pi3b — Alert (`192.168.100.3`)
 
 | Service | Role | Notes |
 |---------|------|-------|
-| Suricata | signature IDS | ET-Open rules; `eve.json` → aggregator |
-| `sentinel-agg` | normalize + publish | dedupe by signature+src within 60s window |
-| hostapd | `SENTINEL-SECURE` AP | WPA2, mgmt plane only |
-| dnsmasq | DHCP + DNS for mgmt | static lease for operator laptop |
-| GPIO listener | enclosure sense | `ultron/tripwire/pi3b` |
+| `sentinel-alert` | consume risk + detections | SQLite alerts; SMTP on RED/PURPLE; ACK API |
+| `sentinel-report` | daily Markdown | timeline, top events, scans |
+| hostapd | `SENTINEL-SECURE` AP | WPA2, management plane only |
+| dnsmasq | DHCP + DNS | static lease for operator laptop |
+| GPIO listener | case sense | `ultron/tripwire/pi3b` if wired here |
 
-**IDS placement options (pick at deploy):**
+**Alert path:** MQTT subscribe → persist → email / surface on dashboard (dashboard itself is served from Pi4).
 
-1. **Mirror/span** of server switch port (passive, zero inline risk) — *default for demo*.
-2. **Inline** between switch and servers (blocks, but becomes SPOF) — Phase 2 consideration.
-
-### 3.4 ESP32-C3 — Indicator Node
+### 3.4 ESP32-C3 — Indicator
 
 ```
-Pi4 (JSON @10Hz USB serial) ──▶ ESP32-C3 ──┬──▶ WS2812B ring (8 px)
-                                            └──▶ SSD1306 OLED 128×64
+Pi4 JSON @10Hz USB serial ──► ESP32-C3 ──┬──► WS2812B ×8
+                                         └──► SSD1306 128×64
 ```
 
-Serial frame: `{"score":42,"band":"YELLOW","nodes":4,"last":"2026-09-23T12:00:00Z"}` + `\n`.
+Frame: `{"score":42,"band":"YELLOW","nodes":4,"last":"ISO"}` + `\n`.  
+Non-blocking NeoPixel loop; band hysteresis at 29/30; OLED ≤4 Hz.
 
-Firmware rules: non-blocking `NeoPixel.show()` loop, band state machine with hysteresis (1-sample) to prevent flicker at 29/30 boundary, OLED refresh ≤4 Hz.
-
-### 3.5 ESP32-WROOM — Tripwire Node
+### 3.5 ESP32-WROOM — Tripwire
 
 ```
-Case switch Pi3a ──GPIO16──▶ (pull-up, LOW = opened)
-Case switch Pi3b ──GPIO17──▶
-Buzzer        ◀──GPIO4──── Pi-side alarm pattern (or local firmware tone)
+Case Pi3a ──GPIO16──► pull-up, LOW = open
+Case Pi3b ──GPIO17──►
+Buzzer    ◄──GPIO4── band pattern
 ```
 
-- **No WiFi** on this node — physical only, so it cannot be remotely disarmed.
-- Debounce 50ms; publish edge events (open/close), not levels.
-- Alarm pattern mirrors risk band (steady / double / continuous).
+- **No WiFi** — cannot be remote-disarmed  
+- Debounce 50ms; publish edges not levels  
+
+---
+
+### 3.6 Hardware Connections (physical wiring)
+
+Complete neat wiring map — shelf / utility-closet install for a smart house.
+
+```
+HOME ROUTER ──► [5-port switch]
+                  ├─ eth0 Pi4  .1  GOVERNANCE
+                  ├─ eth0 Pi3a .2  DETECTION
+                  └─ eth0 Pi3b .3  ALERT
+
+Pi4  ──USB──► ESP32-C3 ──┬── WS2812B×8 (DIN=GPIO2)
+                         └── SSD1306 I2C (SDA/SCL)
+     optional ──USB──► evidence pendrive / SSD
+
+Pi3a ──USB──► TL-WN722N (passive monitor)
+     GPIO26 ◄──jumper── ESP32-WROOM GPIO16 (case reed)
+
+Pi3b ──USB──► AC600 hostapd "SENTINEL-SECURE" (mgmt AP)
+     GPIO26 ◄──jumper── ESP32-WROOM GPIO17 (case reed)
+
+ESP32-WROOM island (WiFi radio OFF):
+  GPIO16 → Pi3a case · GPIO17 → Pi3b case · GPIO4 → buzzer+
+  3V3/GND from Pi3a header · active-low · debounce 50ms
+
+POWER: PSU strip → Pi4 5V/3A + Pi3a 5V/2.5A + Pi3b 5V/2.5A ≈ 38W
+MGMT:  laptop ─WiFi─► Pi3b AP ─► only http://192.168.100.1:8080
+```
+
+**Wiring table**
+
+| From | To | Medium | Notes |
+|------|----|--------|-------|
+| Switch ports 1–3 | Pi4 / Pi3a / Pi3b eth0 | Cat6 | Static `.1` `.2` `.3` on `192.168.100.0/24` |
+| Pi4 USB | ESP32-C3 | USB | Serial **115200**, JSON @10Hz + `\n` |
+| C3 GPIO2 | WS2812B DIN | dupont | 8 px, common GND |
+| C3 SDA/SCL | SSD1306 | I2C `0x3C` | OLED ≤4 Hz |
+| WROOM GPIO16 | Pi3a GPIO26 | jumper | Case reed, pull-up, LOW = open |
+| WROOM GPIO17 | Pi3b GPIO26 | jumper | Case reed, pull-up, LOW = open |
+| WROOM GPIO4 | Buzzer + | jumper | Band pattern; − → GND |
+| WROOM 3V3/GND | Pi3a header | power | Tripwire stays off WiFi |
+| Pi3a USB | TL-WN722N | USB | Monitor mode — passive only |
+| Pi3b USB | AC600 | USB | WPA2 AP → `192.168.50.0/24` |
+| Operator laptop | Pi3b AP | WiFi | **Only** Pi4:8080 allowed |
+| PSU strip | 3× Pi | DC | Shared strip, ~38 W total |
+
+**ESP32-WROOM pin map**
+
+| Pin | Dir | Target | Logic |
+|-----|-----|--------|-------|
+| GPIO16 | in | Pi3a case reed | pull-up; LOW = open |
+| GPIO17 | in | Pi3b case reed | pull-up; LOW = open |
+| GPIO4 | out | Buzzer + | steady / double / continuous |
+| 3V3 | pwr | Pi3a | — |
+| GND | pwr | common | — |
+| WiFi | off | — | cannot be remotely disarmed |
+
+**ESP32-C3 pin map (→ Pi4)**
+
+| Pin | Target | Protocol |
+|-----|--------|----------|
+| USB | Pi4 UART | 115200, JSON @10Hz |
+| GPIO2 | WS2812B DIN | NRZ single-wire |
+| GPIO4/5 | SSD1306 | I2C |
+| 5V/GND | power | strip + OLED |
+
+**Smart-house install notes:** stack three boards on a shelf or in a utility closet next to the home router/switch; keep the LED/OLED indicator in the hallway so band color is visible from the room; tripwire reeds mount on Pi3a/Pi3b case lids; management AP SSID is `SENTINEL-SECURE` (operator phone/laptop only — never IoT devices).
 
 ---
 
 ## 4. Event Pipeline (End-to-End)
 
-```
-[Sensor] → MQTT publish → [Broker :1883] → fan-out
-                                │
-                ┌───────────────┼────────────────┐
-                ▼               ▼                ▼
-         sentinel-risk    sentinel-alert    sentinel-dashboard
-         (fusion/score)   (persist/email)   (WS → browser)
-                │               │                │
-                ▼               ▼                ▼
-        risk/band retained  SQLite + SMTP   DOM update <100ms
-                │               │
-                └───────┬───────┘
-                        ▼
-              serial → ESP32-C3 → LED + OLED (physical echo)
-```
+| Step | Budget | Owner |
+|------|--------|-------|
+| Sensor / IDS emits JSON | 0 | Pi3a / tripwire |
+| MQTT publish QoS 1 for alerts | ≤10ms | publisher |
+| Risk engine fuse + clamp + band | ≤20ms | Pi4 `sentinel-risk` |
+| WS push to browser | ≤50ms | `sentinel-dashboard` |
+| Paint | ≤30ms | browser |
+| **Total event → pixel** | **≤100ms** | demo gate |
 
-**Latency budget (Phase 1 target):**
-
-| Hop | Budget |
-|-----|--------|
-| Detection → MQTT publish | ≤ 20 ms |
-| Broker → risk engine | ≤ 10 ms |
-| Score → band + alert | ≤ 10 ms |
-| Alert → WebSocket frame | ≤ 20 ms |
-| Frame → DOM paint | ≤ 40 ms |
-| **Total event → screen** | **≤ 100 ms** |
+Email path may lag seconds (SMTP); LED serial ≤100ms from score publish.
 
 ---
 
 ## 5. Governance Model (Risk Engine)
 
-### 5.1 Signals & Weights
+**Inputs & default weights:**
 
-| # | Signal | MQTT source | Weight |
-|---|--------|-------------|--------|
-| 1 | Canary events | `ultron/canary/#` | 0.25 |
-| 2 | Suricata alerts | `ultron/suricata/#` | 0.20 |
-| 3 | Scanner findings | `ultron/scan/#` | 0.15 |
-| 4 | IDS / aggregated | `ultron/suricata/#` (sev-scaled) | 0.15 |
-| 5 | Tripwire | `ultron/tripwire/#` | 0.15 |
-| 6 | Behavioral anomalies | `ultron/behavior/#` | 0.10 |
+| Source | Weight |
+|--------|--------|
+| Canary / honeypot hit | 0.25 |
+| Suricata alert | 0.20 |
+| Scanner finding (new CVE / open port drift) | 0.15 |
+| Tripwire edge | 0.15 |
+| Passive WiFi anomaly | 0.10 |
+| Behavioral / scan burst residual | 0.15 |
 
-Component scores are each normalized 0–100 (severity maps, count saturates), then:
+- **Score** = clamp(0, 100, weighted sum of active components)  
+- **Decay:** −2 points / 10s toward 0 when quiet  
+- **Hysteresis:** band changes require +2 past boundary (anti-flap)  
+- **Bands:** GREEN 0–29 · YELLOW 30–59 · RED 60–84 · PURPLE 85–100  
+- **Only Pi4 writes** `ultron/risk/#` (MQTT ACL)
 
-```
-score = clamp(0, 100, Σ component_i × weight_i)
-```
+**Phase 1 escalation (notify only):**
 
-### 5.2 Temporal Dynamics
+| Band | Actions |
+|------|---------|
+| GREEN | log |
+| YELLOW | dashboard highlight |
+| RED | dashboard alarm + **email** |
+| PURPLE | + operator page / LED pulse |
 
-- **Decay:** −2 points every 10 s toward baseline (0), applied when no new input.
-- **Rise:** immediate on event (weight × severity).
-- **Band hysteresis:** must cross boundary with +2 margin to change band (reduces flapping).
-
-### 5.3 Bands & Escalation (Phase 1 = notify only)
-
-| Band | Range | LED | Dashboard | Email | Phase 2+ (future) |
-|------|-------|-----|-----------|-------|-------------------|
-| GREEN | 0–29 | breathe | calm | — | — |
-| YELLOW | 30–59 | chase | highlight | — | faster scan cadence |
-| RED | 60–84 | strobe | alarm | ✓ | nftables drop src |
-| PURPLE | 85–100 | pulse | critical + buzzer | ✓ | quarantine host/VLAN |
-
-Phase 1 **never auto-blocks** — it observes, scores, and alerts (demo safety + Black Hat scope).
+Response actions → Phase 2.
 
 ---
 
 ## 6. MQTT Topic Contract
 
-| Topic | Publisher | Subscriber(s) | Retained | Payload sketch |
-|-------|-----------|---------------|----------|----------------|
-| `ultron/canary/#` | Pi3a | risk, alert | no | `{file,user,ip,t}` |
-| `ultron/cowrie/#` | Pi3a | risk, alert | no | `{session,ip,attempt,cmd}` |
-| `ultron/lure/#` | Pi3a | risk, alert | no | `{ip,post,ua}` |
-| `ultron/suricata/#` | Pi3b | risk, alert | no | `{sig_id,sev,src,dst}` |
-| `ultron/scan/#` | Pi4 | risk, alert | no | `{host,port,cve,tool}` |
-| `ultron/tripwire/pi3a` | Pi3a | risk, alert | no | `{edge:"open"/"close"}` |
-| `ultron/tripwire/pi3b` | Pi3b | risk, alert | no | `{edge:"open"/"close"}` |
-| `ultron/risk/score` | Pi4 | all, dash, ESP | **yes** | `42` |
-| `ultron/risk/band` | Pi4 | all, dash, ESP | **yes** | `"YELLOW"` |
-| `ultron/alert/#` | Pi4 | dash, mailer | no | `{id,sev,title,ts,ack:false}` |
-| `ultron/ack/#` | dash | alert svc | no | `{alert_id,op,ts}` |
-| `ultron/health/#` | all | Pi4, dash | yes | `{node,up,services[]}` |
+| Topic | Publisher | Subscribers | Retained |
+|-------|-----------|-------------|----------|
+| `ultron/suricata/#` | Pi3a | risk, alert, dash | no |
+| `ultron/cowrie/#` | Pi3a | risk, alert, dash | no |
+| `ultron/canary/#` | Pi3a | risk, alert, dash | no |
+| `ultron/lure/#` | Pi3a | risk, alert, dash | no |
+| `ultron/wifi/#` | Pi3a | risk | no |
+| `ultron/scan/#` | Pi4 | risk, dash | no |
+| `ultron/tripwire/pi3a` | Pi3a | risk, alert | no |
+| `ultron/tripwire/pi3b` | Pi3b | risk, alert | no |
+| `ultron/risk/score` | Pi4 | all, dash, ESP | **yes** |
+| `ultron/risk/band` | Pi4 | all, dash, ESP | **yes** |
+| `ultron/alert/#` | Pi4 / Pi3b | dash, mailer | no |
+| `ultron/ack/#` | dash | Pi3b | no |
+| `ultron/health/#` | all | Pi4, dash | yes |
 
-QoS: `risk/*` and `health/*` = 1 (retained); event streams = 0; `alert/#` = 1.
+Envelope (alerts): `{id, sev, title, src, body, ts, ack:false}`.
 
 ---
 
 ## 7. Security Architecture
 
-| Layer | Control |
-|-------|---------|
-| Perimeter | fail-closed iptables/nftables; default DROP inbound |
-| SSH | key-only, no root password login, mgmt-plane source allow |
-| MQTT | username/password per client; topic ACLs (only Pi4 writes `risk/#`) |
-| Dashboard | bind `0.0.0.0:8080` on mgmt path; token or basic auth for acks (Phase 1.5 hardening) |
-| Evidence | append-only daily logs on SSD; Pi4 mirror; hashes in report |
-| Deception | honeypot/lure never hold real secrets |
-| Supply | offline apt mirrors optional; no telemetry |
-
-**Threat notes:** ESP32-WROOM has no radio → tamper path is physically requiring case access *and* is watched. Management WiFi WPA2 + unique PSK rotated per engagement.
+| Control | Implementation |
+|---------|----------------|
+| Network | dual plane; deny-all nftables |
+| MQTT | per-client user/pass; ACL: only Pi4 writes `risk/#` |
+| SSH | key-only; password auth off |
+| Dashboard | bind LAN; optional basic auth; no WAN |
+| Evidence | append-only daily logs; hash in report |
+| Honeypot | no real shells; no outbound from Cowrie jail |
+| Updates | offline apt cache / vendored packages at demo |
 
 ---
 
 ## 8. Deployment Topology & Power
 
+Shelf install in a smart house (see also §3.6 wiring):
+
 ```
-[Power strip 15W adapter]──Pi4
-                         ──Pi3a
-                         ──Pi3b
-[USB 5V hub]──SSD, AC600, TL-WN722N, fan, ESP32s
-
-[5-port switch]──Pi4.eth0, Pi3a.eth0, Pi3b.eth0, uplink/span
+[PSU strip]──Pi4, Pi3a, Pi3b          ~38W total
+[5-port switch]──eth0 ×3 (+ optional uplink to home router span)
+[AC600 on Pi3b]──mgmt WiFi SENTINEL-SECURE
+[USB]──ESP32-C3 → Pi4 serial
+[GPIO]──ESP32-WROOM → Pi3a / Pi3b case reeds + buzzer
 ```
 
-| Node | RAM | Typical draw | Image |
-|------|-----|--------------|-------|
-| Pi4 8GB | 8 GB | ~15 W | Pi OS Lite 64-bit |
-| Pi3a/b 1 GB | 1 GB | ~5 W each | Pi OS Lite 32-bit |
-| ESP32 ×2 | 520 KB | <0.5 W | PlatformIO firmware |
-| **Total** | | **~38 W** | |
+| Node | RAM | ~W | OS |
+|------|-----|----|-----|
+| Pi4 | 8GB | ~15 | Pi OS Lite 64-bit |
+| Pi3a / Pi3b | 1GB | ~5 each | Pi OS Lite 32-bit |
+| ESP32s | — | &lt;1 | firmware |
 
-Storage: 500GB USB SSD (ext4, `noatime`) mounted `/mnt/ultron-evidence`.
+**Total ≈ 38W.** Budget guardrail ~**$290** BOM.
 
 ---
 
 ## 9. Service Lifecycle (systemd)
 
-Every long-running component ships a unit in `systemd/`:
+Order: `network-online` → `mosquitto` → pillar services → dashboard.
 
-```
-sentinel-mqtt.timer / mosquitto.service
-sentinel-risk.service      Restart=always RestartSec=5
-sentinel-scan.timer        OnCalendar=*:0/15
-sentinel-alert.service
-sentinel-dashboard.service
-sentinel-report.timer      OnCalendar=daily
-sentinel-heal.service      checks others every 30s
-```
+| Unit examples | Node |
+|---------------|------|
+| `mosquitto`, `sentinel-risk`, `sentinel-scan`, `sentinel-dashboard`, `sentinel-heal` | Pi4 Governance |
+| `suricata`, `sentinel-agg`, `sentinel-cowrie-bridge`, `sentinel-canary`, `sentinel-lure` | Pi3a Detection |
+| `sentinel-alert`, `sentinel-report`, `hostapd`, `dnsmasq` | Pi3b Alert |
 
-`sentinel-heal` escalation: restart → 30s → restart → 60s → mark `DEGRADED` on health topic → email operator (still Phase 1 alerting, not autonomous response).
+Restart=`always` with 5s delay; health publisher every 10s on `ultron/health/#`.
 
 ---
 
 ## 10. Data Model (SQLite core)
 
 ```sql
-events(id, ts, node, topic, severity, raw_json)
-scores(id, ts, score, band, breakdown_json)      -- every change
-scans(id, ts, tool, target, findings_json)
-alerts(id, ts, sev, title, body, ack_by, ack_ts)
-health(node, ts, up, services_json)
-reports(path, ts, range_start, range_end)
+events(id, ts, source, type, severity, payload_json);
+scores(id, ts, score, band, components_json);
+alerts(id, ts, sev, title, src, body, ack, ack_ts);
+acks(alert_id, ts, operator);  -- or columns on alerts
+scans(id, ts, tool, hosts, vulns_json, raw_path);
+health(node, ts, up, services_json);
 ```
 
-Indexes: `events(ts)`, `scores(ts, band)`, `alerts(ack_by)`.
+Indexes: `events(ts)`, `alerts(ack, ts)`, `scores(ts)`.
 
 ---
 
@@ -299,58 +317,48 @@ Indexes: `events(ts)`, `scores(ts, band)`, `alerts(ack_by)`.
 
 | Phase | Architectural delta |
 |-------|---------------------|
-| **1 (now)** | Detection + governance + alerting + premium dashboard; LED/OLED echo |
-| **2** | New `sentinel-response` on Pi4; nftables zone manager; reversible playbooks keyed to band crossings; response audit table |
-| **3** | New `sentinel-hunt` workers; per-host behavioral baselines; correlation graph; hypothesis scheduler (nmap/Nuclei bursts) |
-| **ULTRON-X** | Jetson joins as optional analytics subscriber on same MQTT contract (no schema break) |
+| **1 (now)** | Detect + govern + alert + premium dashboard; LED/OLED |
+| **2 Response** | `sentinel-response` on Pi4; nftables zones; reversible playbooks on band crossings; audit table |
+| **3 Hunting** | `sentinel-hunt` workers; per-host baselines; correlation graph; hypothesis scheduler |
 
-**Invariant across phases:** dual planes, ESP32 sensor roles, MQTT topic contract, SQLite evidence chain.
+**Invariant across phases:** dual planes, ESP32 roles, MQTT contract (`ultron/#`), SQLite evidence chain, three-pillar node map.
 
 ---
 
 ## 12. Failure Modes & Responses
 
-| Failure | Detection | System behavior |
-|---------|-----------|-----------------|
-| One Pi down | missed `health` >30s | dashboard node tile red; risk engine ignores missing sources (weight renormalize); heal attempts |
-| MQTT down | connect fail | local services buffer 1000 events RAM, retry; dashboard `MQTT DEGRADED` |
-| SSD unmounted | mount check in heal | alerts still RAM+email; report notes `EVIDENCE DEGRADED` |
-| ESP32-C3 unplugged | serial EOF | dashboard continues; banner `INDICATOR LINK LOST` |
-| Band flap | hysteresis | +2 margin; alert dedupe 60s per sig+src |
+| Failure | Detection | Phase 1 response |
+|---------|-----------|------------------|
+| Broker down | health + WS fail | dashboard STALE/OFFLINE |
+| Risk engine dead | systemd restart; score freeze age | restart; hold last band |
+| Detection node down | missing `ultron/health/pi3a` | tile red; score decays only |
+| Alert node down | no email on RED | tile red; dashboard still LIVE (Pi4) |
+| Disk full | df alert | stop noncritical logs; notify |
+| Tripwire stuck open | edge flood | rate-limit + yellow health |
 
 ---
 
 ## 13. Build Order (dependency graph)
 
-```
-[1] Network + OS images + firewall DROP baseline
-        │
-[2] Mosquitto + ACLs  ────────────────┐
-        │                             │
-[3] health + ack loop                 │
-        │                             │
-[4] Suricata eve → agg → MQTT         │
-[5] Cowrie + canary → MQTT            │
-[6] tripwire GPIO listeners           │
-        │                             │
-[7] risk engine (fusion + bands) ◀────┘
-        │
-[8] alert manager (SQLite + email)
-        │
-[9] dashboard (WS + UI)  ← see dashboard.md
-        │
-[10] ESP32-C3 serial echo + ESP32-WROOM firmware
-        │
-[11] report timer + evidence mount
-        │
-[12] LAB mode extras (leaderboard, TL-WN722N)
-```
+1. Images + static IPs + nftables deny-first  
+2. Mosquitto + ACLs + health publisher  
+3. **Detection:** Suricata → Cowrie → canaries → lure → passive WiFi  
+4. **Governance:** risk engine → scanners → SQLite  
+5. **Alert:** alert manager → SMTP → reports  
+6. **Dashboard last** (needs all topics) — polish until §8 of `dashboard.md` passes  
+7. ESP32 firmware (C3 serial, WROOM GPIO)  
+8. Full-path demo rehearsal ≤100ms + RED email  
 
 ---
 
 ## 14. Document Sync Rules
 
-- Hardware/IP/topic changes → update **this file** + `promt.md` §2/§6 in the **same commit**.
-- UI/UX changes → `dashboard.md`.
-- Scope/phase changes → `blackhat.md` roadmap + `README.md` roadmap.
-- Never edit `ULTRON(SEN3)/` (frozen backup, gitignored).
+| Change | Update |
+|--------|--------|
+| Node/services/topics | `architecture.md` + `blackhat.md` |
+| Hardware wiring / pins | `architecture.md` §3.6 + `README.md` Hardware Connections |
+| Dashboard UX/perf | `dashboard.md` |
+| AI assignment / quality bar | `promt.md` |
+| Pitch / BOM / roadmap | `README.md` |
+
+Same commit when possible. `ULTRON(SEN3)/` remains a frozen gitignored backup — never edit.

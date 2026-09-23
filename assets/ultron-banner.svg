@@ -1,217 +1,94 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 320" width="1200" height="320">
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 320" width="1200" height="320" role="img" aria-label="ULTRON Smart-House IoT Cybersecurity Ecosystem banner">
   <defs>
-    <!-- Background gradient -->
     <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#0a0e1a"/>
-      <stop offset="50%" stop-color="#0d1321"/>
-      <stop offset="100%" stop-color="#0a0e1a"/>
+      <stop offset="0%" stop-color="#0a0e14"/>
+      <stop offset="55%" stop-color="#0d1520"/>
+      <stop offset="100%" stop-color="#121a28"/>
     </linearGradient>
-    <!-- Glow effect -->
-    <filter id="glow">
-      <feGaussianBlur stdDeviation="3" result="blur"/>
-      <feMerge>
-        <feMergeNode in="blur"/>
-        <feMergeNode in="SourceGraphic"/>
-      </feMerge>
+    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#22c55e"/>
+      <stop offset="35%" stop-color="#eab308"/>
+      <stop offset="70%" stop-color="#ef4444"/>
+      <stop offset="100%" stop-color="#a855f7"/>
+    </linearGradient>
+    <linearGradient id="shield" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8"/>
+      <stop offset="100%" stop-color="#6366f1"/>
+    </linearGradient>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="4" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
     </filter>
-    <!-- Text glow -->
-    <filter id="textglow">
-      <feGaussianBlur stdDeviation="2" result="blur"/>
-      <feMerge>
-        <feMergeNode in="blur"/>
-        <feMergeNode in="SourceGraphic"/>
-      </feMerge>
-    </filter>
-    <!-- Pulse ring -->
-    <radialGradient id="pulse" cx="50%" cy="50%" r="50%">
-      <stop offset="0%" stop-color="#00ff88" stop-opacity="0.3"/>
-      <stop offset="100%" stop-color="#00ff88" stop-opacity="0"/>
-    </radialGradient>
-    <!-- Circuit line pattern -->
-    <pattern id="circuit" x="0" y="0" width="60" height="60" patternUnits="userSpaceOnUse">
-      <rect width="60" height="60" fill="none"/>
-      <circle cx="0" cy="0" r="1" fill="#00ff8833"/>
-      <circle cx="60" cy="0" r="1" fill="#00ff8833"/>
-      <circle cx="0" cy="60" r="1" fill="#00ff8833"/>
-      <circle cx="60" cy="60" r="1" fill="#00ff8833"/>
-      <circle cx="30" cy="30" r="1.5" fill="#00ff8822"/>
-      <line x1="0" y1="30" x2="15" y2="30" stroke="#00ff8811" stroke-width="0.5"/>
-      <line x1="45" y1="30" x2="60" y2="30" stroke="#00ff8811" stroke-width="0.5"/>
-      <line x1="30" y1="0" x2="30" y2="15" stroke="#00ff8811" stroke-width="0.5"/>
-      <line x1="30" y1="45" x2="30" y2="60" stroke="#00ff8811" stroke-width="0.5"/>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1a2332" stroke-width="1"/>
     </pattern>
-    <!-- Scan line animation feel -->
-    <linearGradient id="scanline" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" stop-color="#00ff8800"/>
-      <stop offset="48%" stop-color="#00ff8800"/>
-      <stop offset="50%" stop-color="#00ff8808"/>
-      <stop offset="52%" stop-color="#00ff8800"/>
-      <stop offset="100%" stop-color="#00ff8800"/>
-    </linearGradient>
   </defs>
 
-  <!-- Background -->
   <rect width="1200" height="320" fill="url(#bg)"/>
-  <rect width="1200" height="320" fill="url(#circuit)"/>
+  <rect width="1200" height="320" fill="url(#grid)" opacity="0.45"/>
 
-  <!-- Scanline overlay -->
-  <rect width="1200" height="320" fill="url(#scanline)"/>
+  <!-- top accent line -->
+  <rect x="0" y="0" width="1200" height="4" fill="url(#accent)"/>
 
-  <!-- Top border glow -->
-  <rect x="0" y="0" width="1200" height="2" fill="#00ff88" opacity="0.6"/>
-  <rect x="0" y="1" width="1200" height="1" fill="#00ff88" opacity="0.3" filter="url(#textglow)"/>
-
-  <!-- Bottom border glow -->
-  <rect x="0" y="318" width="1200" height="2" fill="#00ff88" opacity="0.6"/>
-  <rect x="0" y="319" width="1200" height="1" fill="#00ff88" opacity="0.3" filter="url(#textglow)"/>
-
-  <!-- Left accent bar -->
-  <rect x="0" y="0" width="4" height="320" fill="#00ff88" opacity="0.4"/>
-
-  <!-- Corner decorations - top left -->
-  <polyline points="20,40 20,20 40,20" fill="none" stroke="#00ff88" stroke-width="2" opacity="0.7"/>
-  <!-- Corner decorations - top right -->
-  <polyline points="1160,20 1180,20 1180,40" fill="none" stroke="#00ff88" stroke-width="2" opacity="0.7"/>
-  <!-- Corner decorations - bottom left -->
-  <polyline points="20,280 20,300 40,300" fill="none" stroke="#00ff88" stroke-width="2" opacity="0.7"/>
-  <!-- Corner decorations - bottom right -->
-  <polyline points="1160,300 1180,300 1180,280" fill="none" stroke="#00ff88" stroke-width="2" opacity="0.7"/>
-
-  <!-- Shield / Logo -->
-  <g transform="translate(100, 160)">
-    <!-- Outer ring pulse -->
-    <circle cx="0" cy="0" r="72" fill="url(#pulse)"/>
-    <!-- Shield body -->
-    <path d="M0,-58 L48,-40 L48,10 Q48,48 0,62 Q-48,48 -48,10 L-48,-40 Z" 
-          fill="none" stroke="#00ff88" stroke-width="2.5" filter="url(#glow)"/>
-    <path d="M0,-58 L48,-40 L48,10 Q48,48 0,62 Q-48,48 -48,10 L-48,-40 Z" 
-          fill="#00ff88" fill-opacity="0.08"/>
-    <!-- Inner shield accent -->
-    <path d="M0,-44 L36,-30 L36,8 Q36,36 0,48 Q-36,36 -36,8 L-36,-30 Z" 
-          fill="none" stroke="#00ff88" stroke-width="1" opacity="0.4"/>
-    <!-- U letter in shield -->
-    <text x="0" y="14" text-anchor="middle" font-family="'Courier New', monospace" 
-          font-size="48" font-weight="bold" fill="#00ff88" filter="url(#textglow)">U</text>
-    <!-- Circuit lines on shield -->
-    <line x1="-30" y1="-20" x2="-15" y2="-20" stroke="#00ff88" stroke-width="1" opacity="0.5"/>
-    <line x1="15" y1="-20" x2="30" y2="-20" stroke="#00ff88" stroke-width="1" opacity="0.5"/>
-    <line x1="-30" y1="20" x2="-15" y2="20" stroke="#00ff88" stroke-width="1" opacity="0.5"/>
-    <line x1="15" y1="20" x2="30" y2="20" stroke="#00ff88" stroke-width="1" opacity="0.5"/>
-    <circle cx="-15" cy="-20" r="2" fill="#00ff88" opacity="0.6"/>
-    <circle cx="15" cy="-20" r="2" fill="#00ff88" opacity="0.6"/>
-    <circle cx="-15" cy="20" r="2" fill="#00ff88" opacity="0.6"/>
-    <circle cx="15" cy="20" r="2" fill="#00ff88" opacity="0.6"/>
+  <!-- shield logo -->
+  <g transform="translate(64,78)" filter="url(#glow)">
+    <path d="M70 8 L128 32 V78 C128 118 100 148 70 162 C40 148 12 118 12 78 V32 Z"
+          fill="#0f172a" stroke="url(#shield)" stroke-width="4"/>
+    <path d="M70 36 L104 50 V80 C104 104 88 124 70 134 C52 124 36 104 36 80 V50 Z"
+          fill="none" stroke="#38bdf8" stroke-width="2" opacity="0.7"/>
+    <text x="70" y="92" text-anchor="middle" font-family="ui-monospace,monospace" font-size="28" font-weight="700" fill="#e2e8f0">U</text>
   </g>
 
-  <!-- Main title -->
-  <text x="200" y="120" font-family="'Courier New', monospace" font-size="72" font-weight="bold"
-        fill="#00ff88" filter="url(#textglow)">ULTRON</text>
+  <!-- title block -->
+  <text x="230" y="118" font-family="system-ui,sans-serif" font-size="64" font-weight="800" fill="#f1f5f9" letter-spacing="6">ULTRON</text>
+  <text x="232" y="152" font-family="system-ui,sans-serif" font-size="18" font-weight="600" fill="#38bdf8" letter-spacing="3">SMART-HOUSE IoT CYBERSECURITY ECOSYSTEM</text>
+  <text x="232" y="182" font-family="system-ui,sans-serif" font-size="15" fill="#94a3b8" letter-spacing="2">DETECTION · GOVERNANCE · ALERT MANAGEMENT</text>
 
-  <!-- Subtitle -->
-  <text x="200" y="152" font-family="'Courier New', monospace" font-size="16" fill="#8899aa" 
-        letter-spacing="6">AUTONOMOUS IOT CYBERSECURITY ECOSYSTEM</text>
+  <!-- pillar chips -->
+  <g font-family="system-ui,sans-serif" font-size="13" font-weight="600">
+    <rect x="232" y="210" width="130" height="34" rx="6" fill="#14532d" stroke="#22c55e"/>
+    <text x="297" y="232" text-anchor="middle" fill="#86efac">Pi3a DETECT</text>
 
-  <!-- Tagline -->
-  <text x="200" y="176" font-family="'Courier New', monospace" font-size="14" fill="#556677" 
-        letter-spacing="4">DETECTION • GOVERNANCE • ALERT MANAGEMENT</text>
+    <rect x="374" y="210" width="140" height="34" rx="6" fill="#1e3a5f" stroke="#38bdf8"/>
+    <text x="444" y="232" text-anchor="middle" fill="#7dd3fc">Pi4 GOVERN</text>
 
-  <!-- Separator line -->
-  <line x1="200" y1="192" x2="680" y2="192" stroke="#00ff88" stroke-width="1" opacity="0.3"/>
-
-  <!-- Stats row -->
-  <!-- Stat 1: Nodes -->
-  <g transform="translate(210, 230)">
-    <text x="0" y="0" font-family="'Courier New', monospace" font-size="28" font-weight="bold" fill="#00ff88" filter="url(#textglow)">3</text>
-    <text x="0" y="20" font-family="'Courier New', monospace" font-size="11" fill="#667788" letter-spacing="2">IOT NODES</text>
+    <rect x="526" y="210" width="130" height="34" rx="6" fill="#4c1d95" stroke="#a855f7"/>
+    <text x="591" y="232" text-anchor="middle" fill="#d8b4fe">Pi3b ALERT</text>
   </g>
 
-  <!-- Stat divider -->
-  <line x1="290" y1="215" x2="290" y2="255" stroke="#00ff88" stroke-width="1" opacity="0.2"/>
+  <!-- stats column -->
+  <g font-family="ui-monospace,monospace">
+    <text x="780" y="100" font-size="42" font-weight="700" fill="#22c55e">$290</text>
+    <text x="780" y="124" font-size="12" fill="#64748b" letter-spacing="1">TOTAL HARDWARE</text>
 
-  <!-- Stat 2: Cost -->
-  <g transform="translate(310, 230)">
-    <text x="0" y="0" font-family="'Courier New', monospace" font-size="28" font-weight="bold" fill="#00ff88" filter="url(#textglow)">$290</text>
-    <text x="0" y="20" font-family="'Courier New', monospace" font-size="11" fill="#667788" letter-spacing="2">TOTAL COST</text>
+    <text x="940" y="100" font-size="42" font-weight="700" fill="#38bdf8">0</text>
+    <text x="940" y="124" font-size="12" fill="#64748b" letter-spacing="1">CLOUD DEPS</text>
+
+    <text x="780" y="180" font-size="42" font-weight="700" fill="#eab308">&lt;100ms</text>
+    <text x="780" y="204" font-size="12" fill="#64748b" letter-spacing="1">EVENT → PIXEL</text>
+
+    <text x="940" y="180" font-size="42" font-weight="700" fill="#a855f7">3+2</text>
+    <text x="940" y="204" font-size="12" fill="#64748b" letter-spacing="1">PI + ESP32 NODES</text>
   </g>
 
-  <!-- Stat divider -->
-  <line x1="420" y1="215" x2="420" y2="255" stroke="#00ff88" stroke-width="1" opacity="0.2"/>
-
-  <!-- Stat 3: Risk Score -->
-  <g transform="translate(440, 230)">
-    <text x="0" y="0" font-family="'Courier New', monospace" font-size="28" font-weight="bold" fill="#00ff88" filter="url(#textglow)">0-100</text>
-    <text x="0" y="20" font-family="'Courier New', monospace" font-size="11" fill="#667788" letter-spacing="2">RISK SCORING</text>
+  <!-- risk band strip -->
+  <g transform="translate(780,230)" font-family="system-ui,sans-serif" font-size="11" font-weight="700">
+    <rect x="0" y="0" width="70" height="28" rx="4" fill="#14532d" stroke="#22c55e"/>
+    <text x="35" y="18" text-anchor="middle" fill="#86efac">GREEN</text>
+    <rect x="76" y="0" width="80" height="28" rx="4" fill="#713f12" stroke="#eab308"/>
+    <text x="116" y="18" text-anchor="middle" fill="#fde047">YELLOW</text>
+    <rect x="162" y="0" width="60" height="28" rx="4" fill="#7f1d1d" stroke="#ef4444"/>
+    <text x="192" y="18" text-anchor="middle" fill="#fca5a5">RED</text>
+    <rect x="228" y="0" width="80" height="28" rx="4" fill="#3b0764" stroke="#a855f7"/>
+    <text x="268" y="18" text-anchor="middle" fill="#e9d5ff">PURPLE</text>
   </g>
 
-  <!-- Stat divider -->
-  <line x1="560" y1="215" x2="560" y2="255" stroke="#00ff88" stroke-width="1" opacity="0.2"/>
-
-  <!-- Stat 4: Zero Cloud -->
-  <g transform="translate(580, 230)">
-    <text x="0" y="0" font-family="'Courier New', monospace" font-size="28" font-weight="bold" fill="#00ff88" filter="url(#textglow)">0</text>
-    <text x="0" y="20" font-family="'Courier New', monospace" font-size="11" fill="#667788" letter-spacing="2">CLOUD DEPS</text>
+  <!-- badge -->
+  <g transform="translate(1040,48)">
+    <rect x="0" y="0" width="120" height="36" rx="18" fill="#1e293b" stroke="#f97316" stroke-width="2"/>
+    <text x="60" y="23" text-anchor="middle" font-family="system-ui,sans-serif" font-size="12" font-weight="700" fill="#fdba74">BLACK HAT IoT</text>
   </g>
 
-  <!-- Right side: Status indicators -->
-  <!-- Risk band indicators -->
-  <g transform="translate(820, 80)">
-    <text x="0" y="0" font-family="'Courier New', monospace" font-size="11" fill="#556677" letter-spacing="3">RISK BANDS</text>
-    
-    <!-- GREEN -->
-    <rect x="0" y="16" width="12" height="12" rx="2" fill="#00ff44"/>
-    <text x="18" y="26" font-family="'Courier New', monospace" font-size="12" fill="#00ff44">GREEN</text>
-    <text x="85" y="26" font-family="'Courier New', monospace" font-size="10" fill="#556677">0-29  Normal</text>
-    
-    <!-- YELLOW -->
-    <rect x="0" y="38" width="12" height="12" rx="2" fill="#ffcc00"/>
-    <text x="18" y="48" font-family="'Courier New', monospace" font-size="12" fill="#ffcc00">YELLOW</text>
-    <text x="85" y="48" font-family="'Courier New', monospace" font-size="10" fill="#556677">30-59 Defense</text>
-    
-    <!-- RED -->
-    <rect x="0" y="60" width="12" height="12" rx="2" fill="#ff3333"/>
-    <text x="18" y="70" font-family="'Courier New', monospace" font-size="12" fill="#ff3333">RED</text>
-    <text x="85" y="70" font-family="'Courier New', monospace" font-size="10" fill="#556677">60-84 Critical</text>
-    
-    <!-- PURPLE -->
-    <rect x="0" y="82" width="12" height="12" rx="2" fill="#aa44ff"/>
-    <text x="18" y="92" font-family="'Courier New', monospace" font-size="12" fill="#aa44ff">PURPLE</text>
-    <text x="85" y="92" font-family="'Courier New', monospace" font-size="10" fill="#556677">85-100 Escalate</text>
-  </g>
-
-  <!-- Right side: Services -->
-  <g transform="translate(820, 200)">
-    <text x="0" y="0" font-family="'Courier New', monospace" font-size="11" fill="#556677" letter-spacing="3">STACK</text>
-    <text x="0" y="20" font-family="'Courier New', monospace" font-size="12" fill="#8899aa">MQTT • Suricata • Cowrie</text>
-    <text x="0" y="38" font-family="'Courier New', monospace" font-size="12" fill="#8899aa">nmap • Nuclei • Lynis</text>
-    <text x="0" y="56" font-family="'Courier New', monospace" font-size="12" fill="#8899aa">Premium Dashboard • ESP32</text>
-  </g>
-
-  <!-- Decorative circuit traces -->
-  <!-- Top trace -->
-  <polyline points="700,30 720,30 730,40 760,40 770,30 800,30" 
-            fill="none" stroke="#00ff88" stroke-width="1" opacity="0.2"/>
-  <circle cx="700" cy="30" r="2" fill="#00ff88" opacity="0.3"/>
-  <circle cx="800" cy="30" r="2" fill="#00ff88" opacity="0.3"/>
-
-  <!-- Bottom trace -->
-  <polyline points="700,290 720,290 730,280 760,280 770,290 800,290" 
-            fill="none" stroke="#00ff88" stroke-width="1" opacity="0.2"/>
-  <circle cx="700" cy="290" r="2" fill="#00ff88" opacity="0.3"/>
-  <circle cx="800" cy="290" r="2" fill="#00ff88" opacity="0.3"/>
-
-  <!-- Middle decorative dots -->
-  <circle cx="750" cy="160" r="1.5" fill="#00ff88" opacity="0.2"/>
-  <circle cx="770" cy="160" r="1.5" fill="#00ff88" opacity="0.15"/>
-  <circle cx="790" cy="160" r="1.5" fill="#00ff88" opacity="0.1"/>
-
-  <!-- Horizontal separator in right panel -->
-  <line x1="820" y1="190" x2="1100" y2="190" stroke="#00ff88" stroke-width="0.5" opacity="0.15"/>
-
-  <!-- Black Hat Arsenal badge -->
-  <g transform="translate(960, 270)">
-    <rect x="0" y="0" width="200" height="28" rx="4" fill="#00ff88" fill-opacity="0.08" 
-          stroke="#00ff88" stroke-width="0.5" opacity="0.8"/>
-    <text x="100" y="18" text-anchor="middle" font-family="'Courier New', monospace" 
-          font-size="10" fill="#00ff88" letter-spacing="2">BLACK HAT ASIA 2027</text>
-  </g>
+  <!-- bottom line -->
+  <rect x="0" y="316" width="1200" height="4" fill="url(#accent)"/>
 </svg>
