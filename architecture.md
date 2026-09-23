@@ -11,8 +11,8 @@ ULTRON is a **three-pillar, zero-cloud** IoT security ecosystem for the **smart 
 
 | Pillar | Node | Responsibility |
 |--------|------|----------------|
-| **Governance** | Pi4 8GB `.1` | MQTT bus, risk engine, scanners, premium dashboard, health, evidence |
-| **Detection** | Pi3B+ `.2` | Suricata IDS, Cowrie, canaries, lure, passive WiFi, tripwire sense |
+| **Governance** | Pi4 8GB `.1` | MQTT bus, risk engine, premium dashboard, health, evidence |
+| **Detection** | Pi3B+ `.2` | Suricata IDS, passive LAN watch, passive WiFi, tripwire sense |
 | **Alert** | Pi3B+ `.3` | Alert manager (SMTP), daily reports, management AP |
 
 Plus ESP32-C3 (LED/OLED indicator → Pi4 serial) and ESP32-WROOM (GPIO tripwire, **no WiFi**).
@@ -53,25 +53,22 @@ Detection sensors ──► MQTT (Pi4) ──► Risk Engine ──┬──► 
 |---------|------|----|-----|--------------|
 | `mosquitto` | Mosquitto | TCP 1883 / WS 9001 | — | health restart; dashboard `MQTT DEGRADED` |
 | `sentinel-risk` | Python | `ultron/*` | `ultron/risk/score`, `ultron/risk/band` (retained) | hold last score; log decay gaps |
-| `sentinel-scan` | Python + nmap/Nuclei/Lynis | timer 15m | `ultron/scan/#`, SQLite | retry next cycle |
 | `sentinel-dashboard` | Python + static `index.html` | WS←MQTT | browser `:8080` | serve last-known + STALE banner |
 | `sentinel-heal` | Python + systemd | unit states | restart actions, `ultron/health/pi4` | supervised by systemd |
 | evidence | cron + SQLite | DB | `reports/`, optional pendrive | catch-up once |
 
-**Datastore:** `~/ultron/ultron.db` — events, scores, scans, acks. WAL. Nightly backup.
+**Datastore:** `~/ultron/ultron.db` — events, scores, lan devices, acks. WAL. Nightly backup.
 
 ### 3.2 Pi3a — Detection (`192.168.100.2`)
 
 | Service | Role | Egress |
 |---------|------|--------|
 | Suricata | signature **IDS** (not IPS) | `ultron/suricata/#` via aggregator |
-| Cowrie | SSH/Telnet honeypot 22/23 | `ultron/cowrie/#` |
-| auditd + canary bridge | planted file access | `ultron/canary/#` |
-| Web lure | decoy login POST log | `ultron/lure/#` |
+| `sentinel-lan` | passive DHCP/ARP **new-device watch** | `ultron/lan/#` |
 | TL-WN722N | **passive** monitor (rogue AP) | `ultron/wifi/#` |
 | GPIO listener | case sense | `ultron/tripwire/pi3a` |
 
-**Deception rules:** realistic banners; scripted sessions; no shell escapes; logs rotated + mirrored to Pi4 evidence.
+**Why no honeypot / active scanner:** behind home NAT nobody reaches Cowrie; nmap/Nuclei burn CPU for audit theater. Passive sensors only.
 
 **IDS placement:** default = mirror/span of switch (zero inline risk). Inline = Phase 2 consideration only.
 
@@ -80,7 +77,7 @@ Detection sensors ──► MQTT (Pi4) ──► Risk Engine ──┬──► 
 | Service | Role | Notes |
 |---------|------|-------|
 | `sentinel-alert` | consume risk + detections | SQLite alerts; SMTP on RED/PURPLE; ACK API |
-| `sentinel-report` | daily Markdown | timeline, top events, scans |
+| `sentinel-report` | daily Markdown | timeline, top events, LAN joins |
 | hostapd | `SENTINEL-SECURE` AP | WPA2, management plane only |
 | dnsmasq | DHCP + DNS | static lease for operator laptop |
 | GPIO listener | case sense | `ultron/tripwire/pi3b` if wired here |
@@ -200,12 +197,10 @@ Email path may lag seconds (SMTP); LED serial ≤100ms from score publish.
 
 | Source | Weight |
 |--------|--------|
-| Canary / honeypot hit | 0.25 |
-| Suricata alert | 0.20 |
-| Scanner finding (new CVE / open port drift) | 0.15 |
-| Tripwire edge | 0.15 |
-| Passive WiFi anomaly | 0.10 |
-| Behavioral / scan burst residual | 0.15 |
+| Suricata alert | 0.40 |
+| Tripwire edge | 0.30 |
+| Passive WiFi anomaly | 0.20 |
+| New-device (LAN watch) | 0.10 |
 
 - **Score** = clamp(0, 100, weighted sum of active components)  
 - **Decay:** −2 points / 10s toward 0 when quiet  
@@ -231,11 +226,8 @@ Response actions → Phase 2.
 | Topic | Publisher | Subscribers | Retained |
 |-------|-----------|-------------|----------|
 | `ultron/suricata/#` | Pi3a | risk, alert, dash | no |
-| `ultron/cowrie/#` | Pi3a | risk, alert, dash | no |
-| `ultron/canary/#` | Pi3a | risk, alert, dash | no |
-| `ultron/lure/#` | Pi3a | risk, alert, dash | no |
+| `ultron/lan/#` | Pi3a | risk, alert, dash | no |
 | `ultron/wifi/#` | Pi3a | risk | no |
-| `ultron/scan/#` | Pi4 | risk, dash | no |
 | `ultron/tripwire/pi3a` | Pi3a | risk, alert | no |
 | `ultron/tripwire/pi3b` | Pi3b | risk, alert | no |
 | `ultron/risk/score` | Pi4 | all, dash, ESP | **yes** |
@@ -257,7 +249,6 @@ Envelope (alerts): `{id, sev, title, src, body, ts, ack:false}`.
 | SSH | key-only; password auth off |
 | Dashboard | bind LAN; optional basic auth; no WAN |
 | Evidence | append-only daily logs; hash in report |
-| Honeypot | no real shells; no outbound from Cowrie jail |
 | Updates | offline apt cache / vendored packages at demo |
 
 ---
@@ -290,8 +281,8 @@ Order: `network-online` → `mosquitto` → pillar services → dashboard.
 
 | Unit examples | Node |
 |---------------|------|
-| `mosquitto`, `sentinel-risk`, `sentinel-scan`, `sentinel-dashboard`, `sentinel-heal` | Pi4 Governance |
-| `suricata`, `sentinel-agg`, `sentinel-cowrie-bridge`, `sentinel-canary`, `sentinel-lure` | Pi3a Detection |
+| `mosquitto`, `sentinel-risk`, `sentinel-dashboard`, `sentinel-heal` | Pi4 Governance |
+| `suricata`, `sentinel-agg`, `sentinel-lan` | Pi3a Detection |
 | `sentinel-alert`, `sentinel-report`, `hostapd`, `dnsmasq` | Pi3b Alert |
 
 Restart=`always` with 5s delay; health publisher every 10s on `ultron/health/#`.
@@ -305,7 +296,7 @@ events(id, ts, source, type, severity, payload_json);
 scores(id, ts, score, band, components_json);
 alerts(id, ts, sev, title, src, body, ack, ack_ts);
 acks(alert_id, ts, operator);  -- or columns on alerts
-scans(id, ts, tool, hosts, vulns_json, raw_path);
+lan_devices(id, first_seen, last_seen, mac, ip, vendor, known);
 health(node, ts, up, services_json);
 ```
 
@@ -342,8 +333,8 @@ Indexes: `events(ts)`, `alerts(ack, ts)`, `scores(ts)`.
 
 1. Images + static IPs + nftables deny-first  
 2. Mosquitto + ACLs + health publisher  
-3. **Detection:** Suricata → Cowrie → canaries → lure → passive WiFi  
-4. **Governance:** risk engine → scanners → SQLite  
+3. **Detection:** Suricata → passive LAN watch → passive WiFi  
+4. **Governance:** risk engine → SQLite  
 5. **Alert:** alert manager → SMTP → reports  
 6. **Dashboard last** (needs all topics) — polish until §8 of `dashboard.md` passes  
 7. ESP32 firmware (C3 serial, WROOM GPIO)  

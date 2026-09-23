@@ -34,7 +34,7 @@ Alerts alone do not save a home. Owners need an **autonomous loop**: detect at t
 
 | Pillar | What ships in Phase 1 (Black Hat) |
 |--------|-----------------------------------|
-| **Detection** | Suricata IDS, Cowrie honeypot, canaries, nmap / Nuclei / Lynis, ESP32 tripwires, passive WiFi monitor |
+| **Detection** | Suricata IDS, passive LAN watch (new device), ESP32 tripwires, passive WiFi monitor |
 | **Governance** | Risk engine 0–100 → GREEN / YELLOW / RED / PURPLE, weighted fusion, decay, escalation policy |
 | **Alert management** | **Premium dashboard** (no compromise), WebSocket &lt;100ms, SMTP on RED/PURPLE, LED/OLED, ack + Markdown reports |
 
@@ -62,12 +62,12 @@ Alerts alone do not save a home. Owners need an **autonomous loop**: detect at t
   ┌─────────────────────────────────────────────────────────────────┐
   │  DETECTION (Pi3a)          GOVERNANCE (Pi4)       ALERT (Pi3b) │
   │  ─────────────────         ───────────────       ─────────────  │
-  │  Suricata IDS    ──┐                           ┌─ Dashboard     │
-  │  Cowrie honeypot ──┤                           │  (Pi4 :8080)   │
-  │  Canaries / lure ──┼──► MQTT ──► Risk 0–100 ──┼─ Email SMTP     │
-  │  nmap/Nuclei/Lynis─┤      bus     + bands      │  LED / OLED    │
-  │  ESP32 tripwires ──┤                           └─ Daily .md     │
-  │  Passive WiFi ─────┘       decay · weights      ack · history   │
+  │  Suricata IDS      ──┐                       ┌─ Dashboard       │
+  │  New-device watch  ──┤                       │  (Pi4 :8080)     │
+  │  ESP32 tripwires   ──┼──► MQTT ──► Risk ─────┼─ Email SMTP      │
+  │  Passive WiFi      ──┤      bus    0–100     │  LED / OLED      │
+  │                     ──┘    + bands           └─ Daily .md       │
+  │                           decay · weights      ack · history    │
   └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -88,14 +88,13 @@ Alerts alone do not save a home. Owners need an **autonomous loop**: detect at t
 flowchart TB
   subgraph DET["Pi3a — Detection · .2"]
     SUR[Suricata IDS]
-    COW[Cowrie + Canaries]
+    LAN[New-device watch]
     WIFI[Passive WiFi]
   end
 
   subgraph GOV["Pi4 — Governance · .1"]
     MQTT[[Mosquitto]]
     RISK[Risk Engine 0-100]
-    SCAN[nmap / Nuclei / Lynis]
     DASH["Premium Dashboard :8080"]
   end
 
@@ -111,9 +110,8 @@ flowchart TB
   end
 
   SUR --> MQTT
-  COW --> MQTT
+  LAN --> MQTT
   WIFI --> MQTT
-  SCAN --> MQTT
   WROOM --> MQTT
   MQTT --> RISK
   RISK --> DASH
@@ -125,8 +123,8 @@ flowchart TB
 
 | Node | Pillar | IP | Job |
 |------|--------|-----|-----|
-| **Pi4 8GB** | **Governance** | .1 | MQTT, risk engine, scanners, **premium dashboard**, health, evidence |
-| **Pi3B+** | **Detection** | .2 | Suricata, Cowrie, canaries, lure, passive WiFi, tripwire sense |
+| **Pi4 8GB** | **Governance** | .1 | MQTT, risk engine, **premium dashboard**, health, evidence |
+| **Pi3B+** | **Detection** | .2 | Suricata, new-device watch, passive WiFi, tripwire sense |
 | **Pi3B+** | **Alert** | .3 | Alert manager (SMTP), reports, management AP → dashboard |
 | **ESP32-C3** | Indicator | USB→Pi4 | NeoPixel band + OLED score |
 | **ESP32-WROOM** | Tripwire | GPIO | Case open + buzzer (no WiFi) |
@@ -253,12 +251,13 @@ Power ≈ **38W**. All services on-prem.
 - **Evidence always** — SQLite + Markdown + optional pendrive  
 - **Fail-visible** — dashboard shows DEGRADED; never silent failure  
 - **Built for the house** — quiet shelf form-factor, visible LED/OLED posture, no enterprise rack required  
+- **Lean by design** — no honeypots, no active scanners; only sensors that earn RAM/CPU on a home guard box  
 
 ---
 
 ## Operating Mode
 
-**ULTRON only.** Continuous autonomous scan → score → alert. No alternate modes.
+**ULTRON only.** Continuous autonomous detect → score → alert. No alternate modes.
 
 ---
 
@@ -276,10 +275,10 @@ git clone https://github.com/ADITYA02NM/ULTRON.git && cd ULTRON
 sudo apt install -y mosquitto mosquitto-clients
 sudo systemctl enable --now mosquitto
 
-# 4. Per-node services (see blackhat.md §18 Systemd map)
-#    Detection: suricata, cowrie, canary bridge
+# 4. Per-node services (see blackhat.md Systemd map)
+#    Detection: suricata, sentinel-lan (new-device), sentinel-agg
 #    Alert:     sentinel-alert, sentinel-report, hostapd
-#    Governance:risk, scan, dashboard
+#    Governance:risk, dashboard, health
 
 # 5. Open the showpiece (from mgmt WiFi SENTINEL-SECURE)
 #    http://192.168.100.1:8080

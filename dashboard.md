@@ -29,12 +29,12 @@
 │ Risk gauge   │ Band card + escalation note          │
 │ 0–100        │ notify only — response is Phase 2    │
 ├──────────────┼──────────────────────────────────────┤
-│ Node grid    │ Detection layers (IDS/honeypot/…)    │
+│ Node grid    │ Detection layers (IDS / LAN / …)      │
 │ 4 tiles      │                                      │
 ├──────────────┴──────────────────────────────────────┤
 │ Alert feed (ack)          │ 24h score sparkline     │
 ├───────────────────────────┴─────────────────────────┤
-│ Scans · events/24h · ack rate · uptime              │
+│ LAN joins · events/24h · ack rate · uptime        │
 ├ Footer: build · MQTT · evidence ────────────────────┤
 ```
 
@@ -109,8 +109,8 @@ Each tile: name, pillar, IP, uptime, service pills, state dot (green/yellow/red)
 ### 4.5 Detection Layers
 
 1. **IDS** — Suricata rule count + last alert age  
-2. **Honeypot** — Cowrie sessions today  
-3. **Scanners** — last run + next in  
+2. **LAN watch** — unknown devices seen today  
+3. **WiFi** — rogue AP flag + last beacon anomaly  
 4. **Tripwire** — armed + last edge  
 
 Dot + label + value. Tripwire open flashes red on edge.
@@ -131,7 +131,7 @@ Dot + label + value. Tripwire open flashes red on edge.
 
 ### 4.8 Stats strip
 
-- events/24h · alerts open · ack rate · uptime %
+- events/24h · alerts open · ack rate · uptime % · new devices/24h  
 - Risk decay note: `governance: −2 pts / 10s → baseline 0`
 
 ### 4.9 Footer
@@ -143,13 +143,13 @@ Dot + label + value. Tripwire open flashes red on edge.
 ## 5. Real-Time Data Contract
 
 Server (Pi4) subscribes allowlist:  
-`ultron/health/#`, `ultron/alert/#`, `ultron/risk/score`, `ultron/risk/band`, `ultron/scan/#`, `ultron/tripwire/#`, `ultron/suricata/#`, `ultron/cowrie/#`, `ultron/canary/#` + score history on join.
+`ultron/health/#`, `ultron/alert/#`, `ultron/risk/score`, `ultron/risk/band`, `ultron/lan/#`, `ultron/tripwire/#`, `ultron/suricata/#`, `ultron/wifi/#` + score history on join.
 
 WS envelope:
 
 ```json
 {
-  "t": "alert|score|band|health|scan|tripwire|history|toast",
+  "t": "alert|score|band|health|lan|tripwire|history|toast",
   "ts": 1767000000,
   "d": {}
 }
@@ -161,7 +161,7 @@ WS envelope:
 | `band` | `{b:"YELLOW"}` | `data-band` + toast if worse |
 | `alert` | `{id,sev,title,src,body,ack:false}` | prepend, flash, count++ |
 | `health` | `{node,up,services[]}` | tile state |
-| `scan` | `{tool,hosts,vulns,ts}` | scans panel |
+| `lan` | `{mac,ip,vendor,known}` | LAN watch layer |
 | `tripwire` | `{node,edge}` | layer flash |
 | `history` | `{points:[[ts,score],…]}` | chart on connect |
 | `toast` | `{msg,sev}` | transient banner |
@@ -202,7 +202,7 @@ WS envelope:
 - [ ] ACK removes badge and survives refresh (SQLite)  
 - [ ] Kill Mosquitto → header STALE/OFFLINE within 5s  
 - [ ] 4 node tiles match `ultron/health/#`  
-- [ ] Detection layers show Suricata + Cowrie + scan + tripwire  
+- [ ] Detection layers show Suricata + LAN watch + WiFi + tripwire  
 - [ ] 24h chart draws from history on first load  
 - [ ] Tablet 1024px usable; no horizontal scroll on desktop  
 - [ ] `prefers-reduced-motion` disables animations  

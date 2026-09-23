@@ -34,13 +34,12 @@ Assign every task, component, and failure to exactly one node. Never blur pillar
 | Domain | Your Workings on This Node |
 |--------|----------------------------|
 | **Event Bus** | Run Mosquitto MQTT broker. All other nodes publish/subscribe here. Auth required; localhost-only ACL for `ultron/risk/#`. |
-| **Governance** | Risk Engine: fuse signals → 0–100 score (weights: canary 25%, suricata 20%, scanners 15%, tripwire 15%, wifi 10%, behavioral 15%). Decay 2 pts / 10s. Map to GREEN/YELLOW/RED/PURPLE. Hysteresis +2. |
-| **Scanning** | Orchestrator for nmap (discovery), Nuclei (CVE), Lynis (host audit). Schedule: every 15 min. Results → SQLite + `ultron/scan/#`. Scanners feed governance only. |
+| **Governance** | Risk Engine: fuse signals → 0–100 score (weights: suricata 40%, tripwire 30%, wifi 20%, new-device 10%). Decay 2 pts / 10s. Map to GREEN/YELLOW/RED/PURPLE. Hysteresis +2. |
 | **Premium Dashboard** | Serve single-file dashboard on port 8080. WebSocket bridges MQTT → browser. **Phase 1 showpiece — see `dashboard.md`; no compromise.** |
 | **Health** | systemd watchdogs. Service dead &gt;30s → restart + log. Liveness only (not product self-heal). |
 | **Evidence** | SQLite WAL + daily Markdown index; optional pendrive sync. |
 
-**Services (Pi4):** `mosquitto`, `sentinel-risk`, `sentinel-scan`, `sentinel-dashboard`, `sentinel-heal`.
+**Services (Pi4):** `mosquitto`, `sentinel-risk`, `sentinel-dashboard`, `sentinel-heal`.
 
 ---
 
@@ -49,14 +48,12 @@ Assign every task, component, and failure to exactly one node. Never blur pillar
 | Domain | Your Workings on This Node |
 |--------|----------------------------|
 | **Network IDS** | Suricata **IDS only** (no IPS in Phase 1) on wired span/mirror. ET-Open rules. Every alert → `ultron/suricata/#`. |
-| **Deception** | Cowrie SSH/Telnet honeypot on 22/23. Full session JSON → `ultron/cowrie/#`. |
-| **Canaries** | auditd on planted files (`/etc/passwd.bak`, `/opt/service.key`, fake cloud keys) → `ultron/canary/#`. |
-| **Web lure** | Decoy admin login; log POSTs only; no real credentials → `ultron/lure/#`. |
+| **LAN watch** | Passive DHCP/ARP snooping: unknown MAC joins → `ultron/lan/#`. No active nmap. |
 | **Wireless (passive)** | TL-WN722N monitor mode: unauthorized AP detection only. **No active attacks.** → `ultron/wifi/#`. |
 | **Tripwire sense** | GPIO from ESP32-WROOM case switches → `ultron/tripwire/pi3a` (+ pi3b line if wired through). |
 | **Aggregator** | Normalize Suricata eve + local syslog; dedupe sig+src in 60s; publish clean events. |
 
-**Services (Pi3a):** `suricata`, `sentinel-agg`, `sentinel-cowrie-bridge`, `sentinel-canary`, `sentinel-lure`.
+**Services (Pi3a):** `suricata`, `sentinel-agg`, `sentinel-lan`.
 
 ---
 
@@ -65,7 +62,7 @@ Assign every task, component, and failure to exactly one node. Never blur pillar
 | Domain | Your Workings on This Node |
 |--------|----------------------------|
 | **Alert Manager** | Subscribe `ultron/#` (risk + detections). Persist alerts to SQLite. Fan-out: (a) notify dashboard path via retained risk topics, (b) **SMTP email on RED/PURPLE**, (c) operator ACK store. |
-| **Reporting** | Daily Markdown: risk timeline, top events, scan summaries → `~/ultron/reports/YYYY-MM-DD.md`. |
+| **Reporting** | Daily Markdown: risk timeline, top events, new LAN devices → `~/ultron/reports/YYYY-MM-DD.md`. |
 | **Management AP** | AC600 as `SENTINEL-SECURE` WPA2 (hostapd) `192.168.50.0/24` + dnsmasq. Operators reach **only** Pi4:8080 from this plane. |
 | **Tripwire sense** | If GPIO17 lands here: publish `ultron/tripwire/pi3b`. |
 | **Escalation policy** | Own the table: GREEN watch → YELLOW dashboard → RED email+toast → PURPLE page operator. **Notify only.** |
@@ -96,7 +93,7 @@ Assign every task, component, and failure to exactly one node. Never blur pillar
 
 **Phase 1 — Black Hat (BUILD — EXCELLENCE REQUIRED):**
 
-1. **Detection** — Suricata + Cowrie + canaries + lure + nmap/Nuclei/Lynis + ESP32 tripwires + passive WiFi.  
+1. **Detection** — Suricata + passive LAN watch + ESP32 tripwires + passive WiFi. **No honeypot, no active scanners.**  
 2. **Governance** — risk fusion, weights, decay, bands, escalation table (**no auto-response**).  
 3. **Alert management** — premium dashboard, WebSocket &lt;100ms, SMTP, LED/OLED, ACK, Markdown export.  
 4. **Premium dashboard** — *top notch, no compromise.* Spec: `dashboard.md`.
@@ -126,8 +123,8 @@ Assign every task, component, and failure to exactly one node. Never blur pillar
 
 ```
 Production LAN  192.168.100.0/24  (wired switch — house LAN)
-  .1  Pi4   GOVERNANCE: mqtt, risk, scan, dashboard:8080, health
-  .2  Pi3a  DETECTION: suricata, cowrie, canary, lure, wifi-mon
+  .1  Pi4   GOVERNANCE: mqtt, risk, dashboard:8080, health
+  .2  Pi3a  DETECTION: suricata, sentinel-lan, wifi-mon
   .3  Pi3b  ALERT: alert-manager, report, hostapd, dnsmasq
   .10+ monitored smart-home hosts / IoT targets on span
 
@@ -142,11 +139,8 @@ ESP32-WROOM → GPIO → Pi3a / Pi3b case reeds + buzzer
 
 ```
 ultron/suricata/#        Pi3a  →  Pi4
-ultron/cowrie/#          Pi3a  →  Pi4
-ultron/canary/#          Pi3a  →  Pi4
-ultron/lure/#            Pi3a  →  Pi4
+ultron/lan/#             Pi3a  →  Pi4   (new device)
 ultron/wifi/#            Pi3a  →  Pi4   (passive)
-ultron/scan/#            Pi4   internal
 ultron/tripwire/pi3a     Pi3a  →  Pi4
 ultron/tripwire/pi3b     Pi3b  →  Pi4
 ultron/risk/score        Pi4   →  all (retained)
@@ -158,7 +152,7 @@ ultron/health/#          all   →  Pi4
 
 ### 7. MODE
 
-- **ULTRON only** — autonomous scan, full alerting, LED live, governance active. No other mode.
+- **ULTRON only** — autonomous detect, full alerting, LED live, governance active. No other mode.
 
 ### 8. OPERATING RULES (YOU, THE AI)
 
@@ -166,10 +160,11 @@ ultron/health/#          all   →  Pi4
 2. **Dashboard wins ties** — clarity of operator view over clever shortcuts.  
 3. **No cloud, no CDN, no paid APIs** — ever.  
 4. **One node, one pillar** — name the node from §2 before adding a feature.  
-5. **Evidence over assertion** — run it, capture output, cite it before “done”.  
-6. **Sync docs** you touch (`README.md`, `architecture.md`, `dashboard.md`, `blackhat.md`).  
-7. **Cost guardrail** — full build ≤ ~$290 unless operator approves.  
-8. **Backup** — `ULTRON(SEN3)/` is frozen; gitignored; never edit inside it.
+5. **Lean guard box** — reject honeypots, active scanners, and any service that fails the home/office RAM+CPU test.  
+6. **Evidence over assertion** — run it, capture output, cite it before “done”.  
+7. **Sync docs** you touch (`README.md`, `architecture.md`, `dashboard.md`, `blackhat.md`).  
+8. **Cost guardrail** — full build ≤ ~$290 unless operator approves.  
+9. **Backup** — `ULTRON(SEN3)/` is frozen; gitignored; never edit inside it.
 
 ### 9. SUCCESS CRITERIA (PHASE 1 DEMO)
 
