@@ -112,8 +112,8 @@ ULTRON fills the gap with **commodity hardware**, **one message bus**, and a **s
 ### 3.2 Pillars
 
 ```
-DETECTION ──► GOVERNANCE ──► ALERT MANAGEMENT
- (Pi3a)      (Pi4 + Dashboard + ESP32-C3)   (Pi3b)
+DETECTION ──────────► GOVERNANCE ──────────► ALERT MANAGEMENT
+ (Pi3a)               (Pi4 + Dashboard + C3)    (Pi3b)
 ```
 
 ### 3.3 Operating Mode
@@ -406,7 +406,7 @@ Configuration remediation playbooks, firewall edits, and autonomous containment 
 
 ### 12.3 Report skeleton
 
-Daily file `~/ultron/reports/YYYY-MM-DD.md`: band timeline, top sources, new LAN devices, open vs acked alerts, node uptime.
+Daily file written to the **Pi4 USB3 pendrive vault** (synced from Pi3b): band timeline, top sources, new LAN devices, open vs acked alerts, node uptime.
 
 ---
 
@@ -704,7 +704,7 @@ Baselines, correlation, hypothesis sweeps. **Concept only** for this paper.
 
 ---
 
-> **Document Version:** 8.0  
+> **Document Version:** 8.1  
 > **Last Updated:** September 2026  
 > **License:** MIT  
 > **Repository:** https://github.com/ADITYA02NM/ULTRON  

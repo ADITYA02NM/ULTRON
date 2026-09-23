@@ -59,16 +59,16 @@ Alerts alone do not save a home. Owners need an **autonomous loop**: detect at t
 ## How It Works — Detection → Governance → Alert
 
 ```
-  ┌─────────────────────────────────────────────────────────────────┐
-  │  DETECTION (Pi3a)          GOVERNANCE (Pi4)       ALERT (Pi3b) │
-  │  ─────────────────         ───────────────       ─────────────  │
-  │  Suricata IDS      ──┐                       ┌─ Dashboard       │
-  │  New-device watch  ──┤                       │  (Pi4 :8080)     │
-  │  ESP32 tripwires   ──┼──► MQTT ──► Risk ─────┼─ Email SMTP      │
-  │  Passive WiFi      ──┤      bus    0–100     │  LED / OLED      │
-  │                     ──┘    + bands           └─ Daily .md       │
-  │                           decay · weights      ack · history    │
-  └─────────────────────────────────────────────────────────────────┘
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ DETECTION (Pi3a)        GOVERNANCE (Pi4)           ALERT (Pi3b)     │
+  │ ─────────────           ───────────────            ─────────────     │
+  │ Suricata · LAN · WiFi ─┐                            ┌─ SMTP email    │
+  │ Tripwires (GPIO)      ─┼─► MQTT ─► Risk 0–100 ─┬─►  │  Daily .md     │
+  │                        ┘    + bands · decay    ├─►  │  → Pi4 vault   │
+  │                                                ├─► Dashboard :8080   │
+  │                                                └─► LED/OLED (C3)     │
+  │                                                 ack · history        │
+  └──────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Risk bands
@@ -90,32 +90,37 @@ flowchart TB
     SUR[Suricata IDS]
     LAN[New-device watch]
     WIFI[Passive WiFi]
+    TA[Tripwire sense GPIO16]
   end
 
   subgraph GOV["Pi4 — Governance · .1"]
     MQTT[[Mosquitto]]
     RISK[Risk Engine 0-100]
     DASH["Premium Dashboard :8080"]
+    AP["Mgmt AP SENTINEL-SECURE"]
   end
 
   subgraph ALRT["Pi3b — Alert · .3"]
     MAIL[SMTP Alert Manager]
-    RPT[Daily Reports]
-    AP[Management AP]
+    RPT[Daily Reports → Pi4 vault]
+    TB[Tripwire sense GPIO17]
   end
 
   subgraph EDGE["ESP32 layer"]
-    C3[ESP32-C3 · LED + OLED]
-    WROOM[ESP32-WROOM · Tripwire]
+    C3[ESP32-C3 · LED + OLED · USB2]
+    WROOM[ESP32-WROOM · Tripwire · no WiFi]
   end
 
   SUR --> MQTT
   LAN --> MQTT
   WIFI --> MQTT
-  WROOM --> MQTT
+  TA --> MQTT
+  TB --> MQTT
+  WROOM -->|GPIO| TA
+  WROOM -->|GPIO| TB
   MQTT --> RISK
   RISK --> DASH
-  RISK --> C3
+  RISK -->|serial| C3
   RISK --> MAIL
   MAIL --> RPT
   AP --> DASH
@@ -248,7 +253,12 @@ Real wiring for the smart-house shelf. Matches [`architecture.md`](architecture.
 | 2 | Raspberry Pi 3B+ | 60 | **Detection** + **Alert** |
 | 1 | ESP32-C3 SuperMini | 5 | LED + OLED |
 | 1 | ESP32-WROOM-32 | 6 | Tripwire |
-| — | NICs, adapters, PSU, case | ~144 | Support |
+| 2 | USB WiFi (TL-WN722N + AC600) | 25 | Passive mon + mgmt AP |
+| 1 | 5-port Gigabit switch | 20 | Production LAN |
+| 3 | PSUs + cables | 35 | Power |
+| 1 | SSD (admin-key OS + SD offload) | 40 | Admin key |
+| 1 | Pendrive (evidence on Pi4 USB3) | 10 | Evidence |
+| — | Cases, jumpers, misc | 14 | Support |
 | | **Total** | **~$290** | Zero cloud |
 
 Power ≈ **38W**. All services on-prem.

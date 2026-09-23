@@ -53,7 +53,7 @@ Assign every task, component, and failure to exactly one node. Never blur pillar
 | **Network IDS** | Suricata **IDS only** (no IPS in Phase 1) on wired span/mirror. ET-Open rules. Every alert → `ultron/suricata/#`. |
 | **LAN watch** | Passive DHCP/ARP snooping: unknown MAC joins → `ultron/lan/#`. No active nmap. |
 | **Wireless (passive)** | TL-WN722N monitor mode: unauthorized AP detection only. **No active attacks.** → `ultron/wifi/#`. |
-| **Tripwire sense** | GPIO from ESP32-WROOM case switches → `ultron/tripwire/pi3a` (+ pi3b line if wired through). |
+| **Tripwire sense** | GPIO16 (case reed) → `ultron/tripwire/pi3a`. GPIO17 is wired to **Pi3b**, not through this node. |
 | **Aggregator** | Normalize Suricata eve + local syslog; dedupe sig+src in 60s; publish clean events. |
 
 **Services (Pi3a):** `suricata`, `sentinel-agg`, `sentinel-lan`.

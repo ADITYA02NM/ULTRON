@@ -136,7 +136,7 @@ Dot + label + value. Tripwire open flashes red on edge.
 
 ### 4.9 Footer
 
-- version, MQTT host, evidence path, link to docs
+- version, MQTT host, evidence path (Pi4 USB3 pendrive), link to docs
 
 ---
 
