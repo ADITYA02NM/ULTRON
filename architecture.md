@@ -365,8 +365,9 @@ Indexes: `events(ts)`, `alerts(ack, ts)`, `scores(ts)`.
 | Change | Update |
 |--------|--------|
 | Node/services/topics | `architecture.md` + `blackhat.md` |
-| Hardware wiring / pins | `architecture.md` §3.6 + `README.md` Hardware Connections |
-| Dashboard UX/perf | `dashboard.md` |
+| Hardware wiring / pins | `architecture.md` §3.6 + `README.md` Hardware connections |
+| Dashboard UX/perf | `dashboard.md` + `build.md` Track B |
+| Build steps / order | `build.md` (+ `architecture.md` §13 if dependency graph changes) |
 | AI assignment / quality bar | `promt.md` |
 | Pitch / BOM / roadmap | `README.md` |
 
