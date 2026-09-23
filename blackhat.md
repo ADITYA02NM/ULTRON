@@ -48,7 +48,7 @@
 
 Smart houses now embed dozens of IoT endpoints — cameras, door locks, environmental sensors, hubs, and assistants — that expand the attack surface without enterprise tooling. A Security Operations Center costs $500K–$2M per year, commercial appliances start near $2,000 plus licensing, and households that suffer a breach face immediate privacy and physical-security loss. The sensor and IoT layer of the home remains largely unmonitored: physical tampering of edge boxes, compromised microcontrollers, and rogue wireless clients fall outside conventional IDS visibility.
 
-This paper presents **ULTRON**, a self-contained autonomous IoT cybersecurity ecosystem **for the smart house**, built on three Raspberry Pi nodes and two ESP32 microcontrollers at approximately **$290** total hardware cost, with **zero cloud dependency**. ULTRON partitions work across three pillars on dedicated hardware: **detection** (Pi3a), **governance** (Pi4 risk scoring), and **alert management** (Pi3b plus a premium single-file dashboard). Phase 1 — the scope of this paper and of the Black Hat Asia 2027 IoT Arsenal demo — implements continuous detection via a **lean sensor set** (Suricata IDS, passive LAN new-device watch, passive WiFi monitor, GPIO tripwires), a weighted 0–100 risk score with four governance bands, and operator-grade alerting (WebSocket dashboard &lt;100ms, SMTP, LED/OLED). Honeypots and active vulnerability scanners are **deliberately excluded**: they fail the resource-and-use-case test for a home/office guard box behind NAT. Automated response and automated threat analysis/hunting are explicitly deferred to future phases. The system runs fully offline in a single **ULTRON** operating mode suitable for unattended deployment in homes, apartments, and small premises.
+This paper presents **ULTRON**, a self-contained autonomous IoT cybersecurity ecosystem **for the smart house**, built on three Raspberry Pi nodes and two ESP32 microcontrollers at approximately **$290** total hardware cost, with **zero cloud dependency**. ULTRON partitions work across three pillars on dedicated hardware: **detection** (Pi3a), **governance** (Pi4 risk scoring and premium dashboard), and **alert management** (Pi3b). Phase 1 — the scope of this paper and of the Black Hat Asia 2027 IoT Arsenal demo — implements continuous detection via a **lean sensor set** (Suricata IDS, passive LAN new-device watch, passive WiFi monitor, GPIO tripwires), a weighted 0–100 risk score with four governance bands, and operator-grade alerting (WebSocket dashboard &lt;100ms, SMTP, LED/OLED). Honeypots and active vulnerability scanners are **deliberately excluded**: they fail the resource-and-use-case test for a home/office guard box behind NAT. Automated response and automated threat analysis/hunting are explicitly deferred to future phases. The system runs fully offline in a single **ULTRON** operating mode suitable for unattended deployment in homes, apartments, and small premises.
 
 **Keywords:** smart house, smart home, home IoT security, edge defense, risk scoring, MQTT, IDS, zero-cloud, Raspberry Pi, alert management, lean security
 
@@ -104,7 +104,7 @@ ULTRON fills the gap with **commodity hardware**, **one message bus**, and a **s
 | Zero cloud | No CDN, SaaS, or phone-home |
 | One node, one pillar | Governance / detection / alert never blur |
 | Notify-first | Humans act in Phase 1; machines score and escalate |
-| Evidence always | SQLite + Markdown (+ optional pendrive) |
+| Evidence always | SQLite + Markdown on **Pi4 USB3 pendrive**; SSD = admin-key + SD offload |
 | Fail-visible | DEGRADED banners; never silent failure |
 | Cost guardrail | New hardware needs operator approval |
 | **Earn your process** | A service stays only with a strong home/office use case and low RAM/CPU |
@@ -113,7 +113,7 @@ ULTRON fills the gap with **commodity hardware**, **one message bus**, and a **s
 
 ```
 DETECTION ──► GOVERNANCE ──► ALERT MANAGEMENT
- (Pi3a)         (Pi4)            (Pi3b + Dashboard + ESP32)
+ (Pi3a)      (Pi4 + Dashboard + ESP32-C3)   (Pi3b)
 ```
 
 ### 3.3 Operating Mode
@@ -139,8 +139,9 @@ Alert-driven, human response in Phase 1. Band crossings page the operator; they 
 | 2 | USB WiFi (TL-WN722N, AC600) | 25 | Passive mon + mgmt AP |
 | 1 | 5-port Gigabit switch | 20 | Production LAN |
 | 3 | PSUs + cables | 35 | Power |
-| 1 | SSD 240–500GB (optional evidence) | 40 | Evidence |
-| — | Cases, jumpers, pendrive, misc | 24 | Support |
+| 1 | SSD 240–500GB (admin-key OS + SD offload) | 40 | Admin key |
+| 1 | Pendrive (evidence on Pi4 USB3) | 10 | Evidence |
+| — | Cases, jumpers, misc | 14 | Support |
 | | **Total** | **~$290** | |
 
 **Power:** ≈38W total. Commodity Raspberry Pi + ESP32 boards only.
@@ -153,11 +154,12 @@ Smart-house desktop/shelf stack: three boards next to the home router and switch
 
 | Attachment | Node | Purpose |
 |------------|------|---------|
-| WS2812B ×8 + SSD1306 | via ESP32-C3 | Band + score visible in room |
+| WS2812B ×8 + SSD1306 | via ESP32-C3 (Pi4 USB2) | Band + score visible in room |
 | Case reed/switch ×2 | ESP32-WROOM | Tamper on Pi3a / Pi3b |
-| Buzzer | ESP32-WROOM | Local audible band pattern |
-| TL-WN722N | Pi3a | Passive WiFi monitor |
-| AC600 | Pi3b | Management AP |
+| TL-WN722N | Pi3a USB | Passive WiFi monitor |
+| AC600 | Pi4 USB3 | Management AP |
+| SSD (portable) | laptop / Pi dock | Bootable admin OS → dashboard as admin; scripts offload Pi SD → SSD |
+| Pendrive | Pi4 USB3 | Evidence SQLite + reports vault |
 
 ### 4.4 Services deliberately excluded
 
@@ -183,15 +185,15 @@ Smart-house desktop/shelf stack: three boards next to the home router and switch
 └──────────────────────┬────────────────────────┘
                        │ MQTT ultron/#
 ┌───────────── GOVERNANCE (Pi4 .1) ─────────────┐
-│ Mosquitto · Risk Engine · Dashboard            │
-│ Health supervisor · SQLite evidence            │
+│ Mosquitto · Risk · Dashboard · Health          │
+│ hostapd AP (AC600) · pendrive evidence · SSD   │
+│ admin-key/offload · ESP32-C3 LED/OLED (USB2)   │
 └───────┬────────────────────────────┬──────────┘
         │ retained score/band        │ subscribe
         ▼                            ▼
-┌── ESP32-C3 LED/OLED      ALERT (Pi3b .3) ─────┐
-│                                   SMTP · reports│
-│                                   mgmt AP       │
-└─────────────────────────────────────────────────┘
+┌───────────── ALERT (Pi3b .3) ─────────────────┐
+│ SMTP · reports → Pi4 pendrive vault · GPIO     │
+└────────────────────────────────────────────────┘
 ```
 
 ### 5.2 Pipeline stages
@@ -214,7 +216,7 @@ Smart-house desktop/shelf stack: three boards next to the home router and switch
 
 **Hardware:** Pi 4 8GB · **IP:** 192.168.100.1  
 
-**Role:** Central governance: MQTT broker, risk engine, **premium dashboard**, health supervision, evidence store.
+**Role:** Central governance: MQTT broker, risk engine, **premium dashboard**, health supervision, evidence store (**pendrive USB3**), management AP (AC600), SSD admin-key/offload scripts.
 
 | Service | Function | Port |
 |---------|----------|------|
@@ -222,9 +224,12 @@ Smart-house desktop/shelf stack: three boards next to the home router and switch
 | Risk Engine | Score + band | MQTT sub |
 | Dashboard | Single-file operator UI | 8080 |
 | Health Supervisor | Service liveness restarts | MQTT health |
-| Evidence | SQLite + report index | local |
+| Evidence | SQLite + report index | pendrive (USB3) |
+| SSD offload | SD-clean scripts + admin OS | portable |
+| hostapd | `SENTINEL-SECURE` AP on AC600 | WiFi |
+| dnsmasq | DHCP/DNS for mgmt | 67/53 |
 
-**Boot:** network → mosquitto → risk → dashboard → health → ESP32 serial → ULTRON mode.
+**Boot:** network → mosquitto → risk → dashboard → health → hostapd → ESP32 serial → ULTRON mode.
 
 ### 6.2 Pi3a — Detection
 
@@ -244,14 +249,12 @@ Smart-house desktop/shelf stack: three boards next to the home router and switch
 
 **Hardware:** Pi 3B+ 1GB · **IP:** 192.168.100.3  
 
-**Role:** Alert delivery and operator access path.
+**Role:** Alert delivery (reports synced to Pi4 pendrive vault).
 
 | Service | Function | Port |
 |---------|----------|------|
 | Alert Manager | Persist + SMTP on RED/PURPLE | MQTT sub |
-| Report generator | Daily Markdown | cron |
-| hostapd | `SENTINEL-SECURE` AP | WiFi |
-| dnsmasq | DHCP/DNS for mgmt | 67/53 |
+| Report generator | Daily Markdown → Pi4 pendrive vault | cron |
 | GPIO listener | `ultron/tripwire/pi3b` | — |
 
 ---
@@ -263,7 +266,7 @@ Smart-house desktop/shelf stack: three boards next to the home router and switch
 | Network | Purpose | Subnet | Path |
 |---------|---------|--------|------|
 | Production (wired) | Smart-home hosts/IoT under watch, MQTT, dashboard | 192.168.100.0/24 | switch |
-| Management (WiFi) | Operator laptop → dashboard only | 192.168.50.0/24 | Pi3b AC600 |
+| Management (WiFi) | Operator laptop → dashboard only | 192.168.50.0/24 | Pi4 AC600 (USB3) |
 
 ### 7.2 Addressing
 
@@ -435,7 +438,7 @@ The dashboard is the **centerpiece of alert management** and the first thing a m
 ### 14.2 ESP32-WROOM — Tripwire (GPIO)
 
 - GPIO16 → Pi3a case, GPIO17 → Pi3b case (active-low, debounce 50ms)  
-- Buzzer GPIO4 mirrors band  
+- **No buzzer** — band feedback is LED/OLED only  
 - **No WiFi** — physically cannot be disarmed over the network  
 
 ### 14.3 Why physical feedback
@@ -504,6 +507,8 @@ Cloud dashboards fail when the network is degraded. LED/OLED keeps posture visib
 | sentinel-risk.service | mosquitto | always |
 | sentinel-dashboard.service | mosquitto | always |
 | sentinel-heal.service | network | always |
+| hostapd.service | network-online | always |
+| dnsmasq.service | hostapd | always |
 
 ### 17.2 Pi3a Detection
 
@@ -519,8 +524,6 @@ Cloud dashboards fail when the network is degraded. LED/OLED keeps posture visib
 |------|-------|---------|
 | sentinel-alert.service | mosquitto, network | always |
 | sentinel-report.timer | — | — |
-| hostapd.service | network-online | always |
-| dnsmasq.service | hostapd | always |
 
 ---
 

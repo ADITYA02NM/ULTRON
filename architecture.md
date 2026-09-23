@@ -11,9 +11,9 @@ ULTRON is a **three-pillar, zero-cloud** IoT security ecosystem for the **smart 
 
 | Pillar | Node | Responsibility |
 |--------|------|----------------|
-| **Governance** | Pi4 8GB `.1` | MQTT bus, risk engine, premium dashboard, health, evidence |
+| **Governance** | Pi4 8GB `.1` | MQTT bus, risk engine, premium dashboard, health, **pendrive evidence**, SSD admin-key/offload scripts |
 | **Detection** | Pi3B+ `.2` | Suricata IDS, passive LAN watch, passive WiFi, tripwire sense |
-| **Alert** | Pi3B+ `.3` | Alert manager (SMTP), daily reports, management AP |
+| **Alert** | Pi3B+ `.3` | Alert manager (SMTP), daily reports → **Pi4 pendrive vault**, tripwire sense |
 
 Plus ESP32-C3 (LED/OLED indicator → Pi4 serial) and ESP32-WROOM (GPIO tripwire, **no WiFi**).
 
@@ -32,14 +32,14 @@ Detection sensors ──► MQTT (Pi4) ──► Risk Engine ──┬──► 
 | Plane | Subnet | Medium | Purpose |
 |-------|--------|--------|---------|
 | **Production** | `192.168.100.0/24` | Ethernet switch | Smart-home sensors/hosts under watch, MQTT, dashboard |
-| **Management** | `192.168.50.0/24` | WiFi AP `SENTINEL-SECURE` (Pi3b AC600) | Operator laptop → **only** Pi4:8080 |
+| **Management** | `192.168.50.0/24` | WiFi AP `SENTINEL-SECURE` (**Pi4 AC600** USB3) | Operator laptop → **only** Pi4:8080 |
 
 **Firewall sketch (nftables, deny-first):**
 
 ```
 # production: allow established, lo, SSH from mgmt, Pi4:8080 from mgmt
 # Pi4: 1883/tcp MQTT only from 192.168.100.0/24
-# Pi3b WiFi clients: forward only to 192.168.100.1:8080
+# Pi4 AC600 (wlan1): WiFi clients forward only to 127.0.0.1:8080 / .1:8080
 # default drop; log drops to ring buffer
 ```
 
@@ -55,9 +55,15 @@ Detection sensors ──► MQTT (Pi4) ──► Risk Engine ──┬──► 
 | `sentinel-risk` | Python | `ultron/*` | `ultron/risk/score`, `ultron/risk/band` (retained) | hold last score; log decay gaps |
 | `sentinel-dashboard` | Python + static `index.html` | WS←MQTT | browser `:8080` | serve last-known + STALE banner |
 | `sentinel-heal` | Python + systemd | unit states | restart actions, `ultron/health/pi4` | supervised by systemd |
-| evidence | cron + SQLite | DB | `reports/`, optional pendrive | catch-up once |
+| `hostapd` + `dnsmasq` | AP on **AC600 (USB3)** | mgmt WiFi | `192.168.50.0/24` → :8080 only | dashboard still reachable on eth0 |
+| evidence | cron + SQLite | **pendrive (USB3)** | `reports/`, WAL DB | catch-up once; SSD is admin-key/offload only |
+| ssd-offload | scripts | portable SSD | move bulky files off Pi SD cards | keeps SD clean; not the live evidence path |
 
-**Datastore:** `~/ultron/ultron.db` — events, scores, lan devices, acks. WAL. Nightly backup.
+**USB map (Pi4):** USB **3.0** = AC600 + **evidence pendrive** · USB **2.0** = ESP32-C3 mini (serial 115200).
+
+**SSD (portable admin key):** bootable ULTRON admin OS → any laptop → dashboard as admin. Scripts copy files from Pi SD cards onto SSD when docked so SD cards stay clean. Not mounted as the live evidence volume.
+
+**Datastore:** `~/ultron/ultron.db` on **pendrive (USB3)** — events, scores, lan devices, acks. WAL. Nightly backup. SSD holds admin OS image + offloaded archives.
 
 ### 3.2 Pi3a — Detection (`192.168.100.2`)
 
@@ -65,8 +71,8 @@ Detection sensors ──► MQTT (Pi4) ──► Risk Engine ──┬──► 
 |---------|------|--------|
 | Suricata | signature **IDS** (not IPS) | `ultron/suricata/#` via aggregator |
 | `sentinel-lan` | passive DHCP/ARP **new-device watch** | `ultron/lan/#` |
-| TL-WN722N | **passive** monitor (rogue AP) | `ultron/wifi/#` |
-| GPIO listener | case sense | `ultron/tripwire/pi3a` |
+| **TL-WN722N** (USB) | **passive** monitor (rogue AP) | `ultron/wifi/#` |
+| GPIO listener | ESP32-WROOM case sense | `ultron/tripwire/pi3a` |
 
 **Why no honeypot / active scanner:** behind home NAT nobody reaches Cowrie; nmap/Nuclei burn CPU for audit theater. Passive sensors only.
 
@@ -77,33 +83,35 @@ Detection sensors ──► MQTT (Pi4) ──► Risk Engine ──┬──► 
 | Service | Role | Notes |
 |---------|------|-------|
 | `sentinel-alert` | consume risk + detections | SQLite alerts; SMTP on RED/PURPLE; ACK API |
-| `sentinel-report` | daily Markdown | timeline, top events, LAN joins |
-| hostapd | `SENTINEL-SECURE` AP | WPA2, management plane only |
-| dnsmasq | DHCP + DNS | static lease for operator laptop |
-| GPIO listener | case sense | `ultron/tripwire/pi3b` if wired here |
+| `sentinel-report` | daily Markdown | timeline, top events, LAN joins → **Pi4 pendrive vault** (shared/sync) |
+| GPIO listener | ESP32-WROOM case sense | `ultron/tripwire/pi3b` |
 
 **Alert path:** MQTT subscribe → persist → email / surface on dashboard (dashboard itself is served from Pi4).
 
-### 3.4 ESP32-C3 — Indicator
+**No hostapd on Pi3b** — management AP lives on Pi4 with the AC600 (USB3). **No evidence pendrive on Pi3b** — vault is Pi4 USB3.
+
+### 3.4 ESP32-C3 mini — Indicator (Pi4 **USB 2.0**)
 
 ```
-Pi4 JSON @10Hz USB serial ──► ESP32-C3 ──┬──► WS2812B ×8
-                                         └──► SSD1306 128×64
+Pi4 USB2 JSON @10Hz serial ──► ESP32-C3 mini ──┬──► SSD1306 OLED (GPIO/I2C)
+                                               └──► WS2812B ×8 (optional, GPIO)
 ```
 
 Frame: `{"score":42,"band":"YELLOW","nodes":4,"last":"ISO"}` + `\n`.  
 Non-blocking NeoPixel loop; band hysteresis at 29/30; OLED ≤4 Hz.
 
-### 3.5 ESP32-WROOM — Tripwire
+### 3.5 ESP32-WROOM — Tripwire (GPIO → Pi3s; optional USB2 power)
 
 ```
 Case Pi3a ──GPIO16──► pull-up, LOW = open
 Case Pi3b ──GPIO17──►
-Buzzer    ◄──GPIO4── band pattern
+Power     ◄── USB 2.0 (optional) or Pi3 3V3
 ```
 
-- **No WiFi** — cannot be remote-disarmed  
+- **WiFi radio OFF** — cannot be remote-disarmed  
 - Debounce 50ms; publish edges not levels  
+- Data path is **GPIO only** to Pi3a/Pi3b — not networked  
+- **No buzzer** — band feedback lives on Pi4 C3 LED/OLED  
 
 ---
 
@@ -117,22 +125,30 @@ HOME ROUTER ──► [5-port switch]
                   ├─ eth0 Pi3a .2  DETECTION
                   └─ eth0 Pi3b .3  ALERT
 
-Pi4  ──USB──► ESP32-C3 ──┬── WS2812B×8 (DIN=GPIO2)
-                         └── SSD1306 I2C (SDA/SCL)
-     optional ──USB──► evidence pendrive / SSD
+Pi4 (real USB map):
+  USB 3.0 ── AC600  → hostapd "SENTINEL-SECURE" (mgmt AP)
+  USB 3.0 ── pendrive → evidence SQLite + reports vault
+  USB 2.0 ── ESP32-C3 mini → OLED (GPIO/I2C) [+ optional WS2812B]
+  (dock)   ── SSD → admin-key OS + SD-offload scripts
 
-Pi3a ──USB──► TL-WN722N (passive monitor)
-     GPIO26 ◄──jumper── ESP32-WROOM GPIO16 (case reed)
+Pi3a:
+  USB ── TL-WN722N (passive monitor)
+  GPIO ◄── ESP32-WROOM GPIO16 (case reed)
 
-Pi3b ──USB──► AC600 hostapd "SENTINEL-SECURE" (mgmt AP)
-     GPIO26 ◄──jumper── ESP32-WROOM GPIO17 (case reed)
+Pi3b:
+  (no USB storage — reports → Pi4 pendrive vault)
+  GPIO ◄── ESP32-WROOM GPIO17 (case reed)
 
-ESP32-WROOM island (WiFi radio OFF):
-  GPIO16 → Pi3a case · GPIO17 → Pi3b case · GPIO4 → buzzer+
-  3V3/GND from Pi3a header · active-low · debounce 50ms
+SSD (portable):
+  bootable admin OS → laptop → dashboard as admin
+  scripts move files off Pi SD cards → SSD (keep SD clean)
+
+ESP32-WROOM (WiFi radio OFF; optional USB2 power):
+  GPIO16 → Pi3a · GPIO17 → Pi3b
+  active-low · debounce 50ms · data path = GPIO only · no buzzer
 
 POWER: PSU strip → Pi4 5V/3A + Pi3a 5V/2.5A + Pi3b 5V/2.5A ≈ 38W
-MGMT:  laptop ─WiFi─► Pi3b AP ─► only http://192.168.100.1:8080
+MGMT:  laptop ─WiFi─► Pi4 AC600 ─► only http://192.168.100.1:8080
 ```
 
 **Wiring table**
@@ -140,16 +156,18 @@ MGMT:  laptop ─WiFi─► Pi3b AP ─► only http://192.168.100.1:8080
 | From | To | Medium | Notes |
 |------|----|--------|-------|
 | Switch ports 1–3 | Pi4 / Pi3a / Pi3b eth0 | Cat6 | Static `.1` `.2` `.3` on `192.168.100.0/24` |
-| Pi4 USB | ESP32-C3 | USB | Serial **115200**, JSON @10Hz + `\n` |
-| C3 GPIO2 | WS2812B DIN | dupont | 8 px, common GND |
-| C3 SDA/SCL | SSD1306 | I2C `0x3C` | OLED ≤4 Hz |
-| WROOM GPIO16 | Pi3a GPIO26 | jumper | Case reed, pull-up, LOW = open |
-| WROOM GPIO17 | Pi3b GPIO26 | jumper | Case reed, pull-up, LOW = open |
-| WROOM GPIO4 | Buzzer + | jumper | Band pattern; − → GND |
-| WROOM 3V3/GND | Pi3a header | power | Tripwire stays off WiFi |
-| Pi3a USB | TL-WN722N | USB | Monitor mode — passive only |
-| Pi3b USB | AC600 | USB | WPA2 AP → `192.168.50.0/24` |
-| Operator laptop | Pi3b AP | WiFi | **Only** Pi4:8080 allowed |
+| **Pi4 USB 3.0** | AC600 | USB3 | WPA2 AP → `192.168.50.0/24` |
+| **Pi4 USB 3.0** | pendrive | USB3 | Evidence vault (SQLite + reports) |
+| **Pi4 USB 2.0** | ESP32-C3 mini | USB2 | Serial **115200**, JSON @10Hz |
+| C3 mini GPIO | SSD1306 | I2C `0x3C` | OLED ≤4 Hz |
+| C3 mini GPIO | WS2812B DIN | dupont | Optional strip |
+| WROOM GPIO16 | Pi3a GPIO | jumper | Case reed, pull-up, LOW = open |
+| WROOM GPIO17 | Pi3b GPIO | jumper | Case reed, pull-up, LOW = open |
+| WROOM 3V3/GND or USB2 | power | — | Radio off; no buzzer |
+| **Pi3a USB** | TL-WN722N | USB | Monitor mode — passive only |
+| Pi3b USB | — | — | No local storage; reports → Pi4 vault |
+| SSD (portable) | laptop / Pi dock | USB | Admin-key OS + SD-offload scripts |
+| Operator laptop | Pi4 AC600 | WiFi | **Only** Pi4:8080 allowed |
 | PSU strip | 3× Pi | DC | Shared strip, ~38 W total |
 
 **ESP32-WROOM pin map**
@@ -158,21 +176,19 @@ MGMT:  laptop ─WiFi─► Pi3b AP ─► only http://192.168.100.1:8080
 |-----|-----|--------|-------|
 | GPIO16 | in | Pi3a case reed | pull-up; LOW = open |
 | GPIO17 | in | Pi3b case reed | pull-up; LOW = open |
-| GPIO4 | out | Buzzer + | steady / double / continuous |
-| 3V3 | pwr | Pi3a | — |
+| USB2 / 3V3 | pwr | Pi or hub | radio off (no buzzer) |
 | GND | pwr | common | — |
-| WiFi | off | — | cannot be remotely disarmed |
 
-**ESP32-C3 pin map (→ Pi4)**
+**ESP32-C3 mini pin map (→ Pi4 USB 2.0)**
 
 | Pin | Target | Protocol |
 |-----|--------|----------|
-| USB | Pi4 UART | 115200, JSON @10Hz |
-| GPIO2 | WS2812B DIN | NRZ single-wire |
-| GPIO4/5 | SSD1306 | I2C |
-| 5V/GND | power | strip + OLED |
+| USB | Pi4 USB **2.0** | 115200, JSON @10Hz |
+| I2C GPIO | SSD1306 | I2C |
+| optional GPIO | WS2812B | NRZ |
+| 5V/GND | USB2 power | mini + OLED |
 
-**Smart-house install notes:** stack three boards on a shelf or in a utility closet next to the home router/switch; keep the LED/OLED indicator in the hallway so band color is visible from the room; tripwire reeds mount on Pi3a/Pi3b case lids; management AP SSID is `SENTINEL-SECURE` (operator phone/laptop only — never IoT devices).
+**Smart-house install notes:** stack three boards on a shelf or in a utility closet next to the home router/switch; keep the OLED/LED indicator where band color is visible; tripwire reeds mount on Pi3a/Pi3b case lids; management AP SSID is `SENTINEL-SECURE` on **Pi4 AC600** (operator phone/laptop only — never IoT devices).
 
 ---
 
@@ -260,9 +276,11 @@ Shelf install in a smart house (see also §3.6 wiring):
 ```
 [PSU strip]──Pi4, Pi3a, Pi3b          ~38W total
 [5-port switch]──eth0 ×3 (+ optional uplink to home router span)
-[AC600 on Pi3b]──mgmt WiFi SENTINEL-SECURE
-[USB]──ESP32-C3 → Pi4 serial
-[GPIO]──ESP32-WROOM → Pi3a / Pi3b case reeds + buzzer
+[AC600 on Pi4 USB3]──mgmt WiFi SENTINEL-SECURE
+[USB2]──ESP32-C3 → Pi4 serial + OLED
+[USB3]──pendrive evidence on Pi4 · [USB]──TL-WN722N on Pi3a
+[SSD portable]──admin-key OS on laptop · scripts offload Pi SD → SSD
+[GPIO]──ESP32-WROOM → Pi3a / Pi3b case reeds (no buzzer)
 ```
 
 | Node | RAM | ~W | OS |
@@ -281,9 +299,9 @@ Order: `network-online` → `mosquitto` → pillar services → dashboard.
 
 | Unit examples | Node |
 |---------------|------|
-| `mosquitto`, `sentinel-risk`, `sentinel-dashboard`, `sentinel-heal` | Pi4 Governance |
-| `suricata`, `sentinel-agg`, `sentinel-lan` | Pi3a Detection |
-| `sentinel-alert`, `sentinel-report`, `hostapd`, `dnsmasq` | Pi3b Alert |
+| `mosquitto`, `sentinel-risk`, `sentinel-dashboard`, `sentinel-heal`, `hostapd`, `dnsmasq` | Pi4 Governance (AC600 USB3) |
+| `suricata`, `sentinel-agg`, `sentinel-lan` | Pi3a Detection (TL-WN722N) |
+| `sentinel-alert`, `sentinel-report` | Pi3b Alert (→ Pi4 pendrive vault) |
 
 Restart=`always` with 5s delay; health publisher every 10s on `ultron/health/#`.
 

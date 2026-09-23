@@ -37,9 +37,12 @@ Assign every task, component, and failure to exactly one node. Never blur pillar
 | **Governance** | Risk Engine: fuse signals → 0–100 score (weights: suricata 40%, tripwire 30%, wifi 20%, new-device 10%). Decay 2 pts / 10s. Map to GREEN/YELLOW/RED/PURPLE. Hysteresis +2. |
 | **Premium Dashboard** | Serve single-file dashboard on port 8080. WebSocket bridges MQTT → browser. **Phase 1 showpiece — see `dashboard.md`; no compromise.** |
 | **Health** | systemd watchdogs. Service dead &gt;30s → restart + log. Liveness only (not product self-heal). |
-| **Evidence** | SQLite WAL + daily Markdown index; optional pendrive sync. |
+| **Evidence** | SQLite WAL on **Pi4 USB3 pendrive** + daily Markdown index. **SSD** = bootable admin-key OS (laptop → dashboard as admin) + scripts offload files from Pi SD cards to keep SD clean. |
+| **Management AP** | AC600 on **USB3** as `SENTINEL-SECURE` WPA2 (hostapd) `192.168.50.0/24` + dnsmasq. Operators reach **only** Pi4:8080 from this plane. |
 
-**Services (Pi4):** `mosquitto`, `sentinel-risk`, `sentinel-dashboard`, `sentinel-heal`.
+**Services (Pi4):** `mosquitto`, `sentinel-risk`, `sentinel-dashboard`, `sentinel-heal`, `hostapd`, `dnsmasq`.
+
+**USB map (Pi4):** USB **3.0** = AC600 + **evidence pendrive** · USB **2.0** = ESP32-C3 mini (serial 115200). SSD portable: admin-key boot + SD offload.
 
 ---
 
@@ -62,12 +65,11 @@ Assign every task, component, and failure to exactly one node. Never blur pillar
 | Domain | Your Workings on This Node |
 |--------|----------------------------|
 | **Alert Manager** | Subscribe `ultron/#` (risk + detections). Persist alerts to SQLite. Fan-out: (a) notify dashboard path via retained risk topics, (b) **SMTP email on RED/PURPLE**, (c) operator ACK store. |
-| **Reporting** | Daily Markdown: risk timeline, top events, new LAN devices → `~/ultron/reports/YYYY-MM-DD.md`. |
-| **Management AP** | AC600 as `SENTINEL-SECURE` WPA2 (hostapd) `192.168.50.0/24` + dnsmasq. Operators reach **only** Pi4:8080 from this plane. |
-| **Tripwire sense** | If GPIO17 lands here: publish `ultron/tripwire/pi3b`. |
+| **Reporting** | Daily Markdown: risk timeline, top events, new LAN devices → **Pi4 USB3 pendrive vault**. |
+| **Tripwire sense** | GPIO17 lands here: publish `ultron/tripwire/pi3b`. |
 | **Escalation policy** | Own the table: GREEN watch → YELLOW dashboard → RED email+toast → PURPLE page operator. **Notify only.** |
 
-**Services (Pi3b):** `sentinel-alert`, `sentinel-report`, `hostapd`, `dnsmasq`.
+**Services (Pi3b):** `sentinel-alert`, `sentinel-report`. *(No hostapd — mgmt AP is on Pi4 with AC600.)*
 
 ---
 
@@ -84,8 +86,7 @@ Assign every task, component, and failure to exactly one node. Never blur pillar
 | Domain | Workings |
 |--------|----------|
 | **Case sense** | GPIO16 → Pi3a open, GPIO17 → Pi3b open. Active-low pull-up, debounce 50ms. |
-| **Alarm** | Buzzer GPIO4: band pattern (steady / double / continuous). |
-| **Link** | **No WiFi** — cannot be remotely disarmed. |
+| **Link** | **No WiFi** — cannot be remotely disarmed. **No buzzer** — band feedback is LED/OLED only. |
 
 ---
 
@@ -123,16 +124,16 @@ Assign every task, component, and failure to exactly one node. Never blur pillar
 
 ```
 Production LAN  192.168.100.0/24  (wired switch — house LAN)
-  .1  Pi4   GOVERNANCE: mqtt, risk, dashboard:8080, health
-  .2  Pi3a  DETECTION: suricata, sentinel-lan, wifi-mon
-  .3  Pi3b  ALERT: alert-manager, report, hostapd, dnsmasq
+  .1  Pi4   GOVERNANCE: mqtt, risk, dashboard:8080, health, hostapd, dnsmasq, evidence pendrive, AC600, SSD offload/admin
+  .2  Pi3a  DETECTION: suricata, sentinel-lan, wifi-mon (TL-WN722N)
+  .3  Pi3b  ALERT: alert-manager, report (→ Pi4 pendrive vault)
   .10+ monitored smart-home hosts / IoT targets on span
 
-Management LAN  192.168.50.0/24  (AP SENTINEL-SECURE on Pi3b)
+Management LAN  192.168.50.0/24  (AP SENTINEL-SECURE on Pi4 AC600 USB3)
   laptop → http://192.168.100.1:8080 only
 
-ESP32-C3   → USB serial → Pi4
-ESP32-WROOM → GPIO → Pi3a / Pi3b case reeds + buzzer
+ESP32-C3   → USB2 serial → Pi4 (+ OLED on mini GPIO)
+ESP32-WROOM → GPIO → Pi3a / Pi3b case reeds (optional USB2 power, radio OFF)
 ```
 
 ### 6. MQTT TOPIC CONTRACT
