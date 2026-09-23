@@ -1,23 +1,27 @@
-# ULTRON — Autonomous Cybersecurity Suite
+# ULTRON — Autonomous IoT Cybersecurity Ecosystem
 
-> **Unified Layer for Threat Response, Observability & Network Defense**
-> Black Hat Asia 2027 Arsenal Submission
+> **Detection · Governance · Alert Management at the Sensor Layer**
+> Black Hat Asia 2027 Arsenal Submission — **IoT Track**
 
 ---
 
 | Field | Value |
 |-------|-------|
-| **Project** | ULTRON — Autonomous Cybersecurity Suite |
+| **Project** | ULTRON — Autonomous IoT Cybersecurity Ecosystem |
+| **Track** | IoT |
 | **License** | MIT |
-| **Total Cost** | ~$290 (3 Raspberry Pi nodes + peripherals) |
+| **Total Cost** | ~$290 (3 Raspberry Pi nodes + 2 ESP32 + peripherals) |
 | **Hardware** | 3× Raspberry Pi, 2× ESP32, 500GB SSD, TL-WN722N, AC600, 128GB pendrive |
 | **Target Audience** | Small companies, schools, universities, home labs |
+| **Phase 1 Scope** | Detection + Governance + Alert Management (Black Hat demo) |
+| **Future Scope** | Phase 2: automated response · Phase 3: automated threat analysis/hunting |
 | **Operating Modes** | ULTRON (full protection) + LAB (CTF training) |
-| **Dashboard** | Single-file HTML, live WebSocket updates |
+| **Dashboard** | Single-file HTML, live WebSocket updates — premium, zero dependencies |
 | **Reports** | Markdown (.md) files |
 | **Event Bus** | Mosquitto MQTT |
 | **Database** | SQLite (WAL mode) |
 | **Minimum Admin** | 1 person (or fully autonomous) |
+| **Companion Docs** | `README.md` (pitch) · `architecture.md` · `dashboard.md` · `promt.md` (AI brief) |
 
 ---
 
@@ -56,15 +60,13 @@
 
 ## 1. Abstract
 
-ULTRON is a self-contained, autonomous cybersecurity appliance built entirely on Raspberry Pi hardware. It is a **modular device** — connect it to any server room via Ethernet and it immediately begins monitoring, detecting, scanning, and protecting. It continuously monitors wired LAN traffic for threats, operates honeypots to lure attackers, performs authorized vulnerability scans against production servers, and assists remediation — all without requiring a dedicated security team. Operator management happens over a separate WiFi hotspot, keeping the production network clean. Physical LED and OLED indicators communicate real-time threat posture at a glance.
+Small organizations face enterprise-grade cyber threats without enterprise-grade tooling: a Security Operations Center costs $500K–$2M per year, commercial appliances start near $2,000 plus licensing, and 60% of small businesses that suffer a cyberattack close within six months. Meanwhile, the sensor and IoT layer of typical networks remains largely unmonitored — physical tampering, compromised microcontrollers, and edge devices fall outside the visibility of conventional IDS products. This paper presents **ULTRON**, a self-contained, autonomous IoT cybersecurity ecosystem built on three Raspberry Pi nodes and two ESP32 microcontrollers at approximately $290 in total hardware cost, with zero cloud dependency.
 
-The core innovation is a **risk-scoring engine** that fuses signals from multiple detection layers — network scanning, honeypot canary events, intrusion detection, wireless monitoring, and physical tripwire sensors — into a single 0–100 risk score. This score drives automated response: from passive monitoring at green, through active defense at yellow, to full quarantine at red. A self-healing subsystem uses predefined remediation templates to automatically fix common issues like unauthorized SSH access, open ports, or expired TLS certificates.
+ULTRON implements three tightly coupled capabilities that constitute the scope of this work (Phase 1): **detection**, **governance**, and **alert management**. Detection fuses six heterogeneous signal sources — honeypot canary events, signature-based IDS alerts (Suricata), authorized vulnerability scanning (nmap, Nuclei, Lynis), aggregated network anomalies, and physical tripwire sensors at the ESP32 layer — over an internal MQTT event bus. Governance normalizes these signals into a deterministic 0–100 risk score through a weighted fusion model with time-based decay, mapped to four operational bands (GREEN, YELLOW, RED, PURPLE) that define escalation policy. Alert management delivers the resulting posture through a premium zero-dependency dashboard (single-file HTML, WebSocket push, sub-100 ms event-to-screen latency), SMTP notification on high-severity band crossings, and physical LED/OLED indicators co-located with the hardware.
 
-ULTRON operates in two modes: **ULTRON** (full autonomous protection with active scanning and response) and **LAB** (educational CTF mode where students learn offensive and defensive security against a live system). The dual-mode design makes it both a production security appliance and a hands-on training platform.
+Operator access occurs over a physically separate management WiFi plane, isolating production monitoring from guest networks. A dual-mode design provides ULTRON mode (continuous autonomous detection and scoring) and LAB mode (a CTF training environment against the same live stack). Automated response (firewall enforcement, service remediation) and automated threat analysis/hunting are explicitly deferred to Phases 2 and 3 as future work; Phase 1 remains notify-only by design to guarantee predictable, auditable behavior for deployment and demonstration. The system is designed for schools, small businesses, community labs, and home networks where cost, simplicity, and observability are the binding constraints.
 
-The entire system costs approximately $290 in hardware, runs on open-source software, and requires zero cloud connectivity. It is designed for environments where enterprise security solutions are too expensive or too complex — schools, small businesses, community labs, and home networks.
-
-**Keywords:** Autonomous security, Raspberry Pi, honeypot, risk scoring, self-healing, CTF, network monitoring, intrusion detection, zero cloud dependency
+**Keywords:** IoT security, autonomous detection, risk scoring, governance, alert management, Raspberry Pi, honeypot, intrusion detection, MQTT, zero cloud dependency, physical tripwire
 
 ---
 
@@ -1484,6 +1486,17 @@ Production LAN security:
 
 ## 23. Implementation Roadmap
 
+> **Phase 1 (Black Hat demo):** detection + governance + alert management + premium dashboard.
+> **Phases 2–3** (response, automated threat analysis/hunting) are future scope — designed, not built, for the submission.
+
+### 23.0 Phase Map
+
+| Phase | Capabilities | When |
+|-------|-------------|------|
+| **1 — Demo** | Detection (Suricata, Cowrie, canaries, scanners, ESP32 tripwires) · Governance (risk engine 0–100, 4 bands) · Alert management (premium dashboard, email, LED/OLED) | Now |
+| **2 — Future** | Automated response: nftables rules, service restarts, IP quarantine on RED/PURPLE | Post-submission |
+| **3 — Future** | Automated threat analysis & hunting: behavioral baselines, anomaly correlation, attack-path inference | Post-submission |
+
 ### 23.1 Week 1: Foundation
 
 | Day | Task | Deliverable |
@@ -1492,9 +1505,9 @@ Production LAN security:
 | 2 | Mosquitto setup, password file, ACL | MQTT broker running, all nodes connecting |
 | 3 | Pi4 core services skeleton (risk engine, scanner) | Services start, subscribe to MQTT |
 | 4 | Pi3a Cowrie + auditd + canary bridge | Honeypot accepting SSH, canary events publishing |
-| 5 | Pi3b Suricata + aggregator | IDS generating alerts, REST API serving data |
-| 6 | ESP32-C3 NeoPixel + OLED firmware | LED responds to MQTT commands |
-| 7 | ESP32-WROOM tripwire + portal | Tripwire events publishing, debug page accessible |
+| 5 | Pi3b Suricata + aggregator | IDS generating alerts, events publishing to MQTT |
+| 6 | ESP32-C3 NeoPixel + OLED firmware | LED responds to risk-band serial frames |
+| 7 | ESP32-WROOM tripwire + GPIO listeners | Tripwire events publishing to MQTT |
 
 ### 23.2 Week 2: Core Intelligence
 
@@ -1502,23 +1515,23 @@ Production LAN security:
 |-----|------|-------------|
 | 8 | Risk scoring engine (full formula + decay) | Score updates in real-time, bands working |
 | 9 | Scanner integration (nmap + Nuclei + Lynis) | Automated scans running on timers |
-| 10 | Self-healing engine + TOML templates | Auto-remediation working for 3+ templates |
-| 11 | Alert system (email + HTML templates) | Email alerts sending on band changes |
-| 12 | Dashboard (single HTML file + WebSocket) | Live dashboard showing all data |
-| 13 | Evidence manager + pendrive sync | Reports generating, syncing to pendrive |
-| 14 | Integration testing | Full pipeline: detect → score → respond → report |
+| 10 | Governance escalation policy (notify-only) | Band crossings logged + retained on broker |
+| 11 | Alert system (email + WebSocket bridge) | Email alerts sending on RED/PURPLE bands |
+| 12 | Premium dashboard (single HTML + WebSocket) | **No compromise:** <100ms push, band-themed, zero deps |
+| 13 | Evidence manager + report generator | Daily Markdown reports generating |
+| 14 | Integration testing | Full Phase 1 pipeline: detect → score → alert → report |
 
 ### 23.3 Week 3: Polish & Security
 
 | Day | Task | Deliverable |
 |-----|------|-------------|
 | 15 | Security hardening (nftables, SSH, systemd) | All hardening checklist items complete |
-| 16 | Circuit breaker + rollback logic | Self-healer doesn't loop on failures |
+| 16 | Health heartbeat + fail-visible DEGRADED states | Dashboard never shows silent stale data |
 | 17 | Mode switching (ULTRON ↔ LAB) | Both modes working, clean transition |
 | 18 | LAB mode + leaderboard | CTF challenges defined, scoring working |
 | 19 | WiFi AP + dnsmasq + captive portal | Operator can connect and access dashboard |
 | 20 | Power management + boot ordering | System boots cleanly, services start in order |
-| 21 | Full regression test | All 30+ test cases passing |
+| 21 | Full regression test | All Phase 1 test cases passing |
 
 ### 23.4 Week 4: Demo & Documentation
 

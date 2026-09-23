@@ -4,15 +4,15 @@
 
 # 🛡️ ULTRON
 
-## Autonomous Cybersecurity on a $290 Raspberry Pi Stack
+## Autonomous IoT Cybersecurity Ecosystem
 
-**Black Hat Asia 2027 Arsenal Submission** | MIT License | Zero Cloud Dependency
+**Black Hat Asia 2027 Arsenal — IoT Track** | MIT License | Zero Cloud Dependency
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Black Hat Asia 2027](https://img.shields.io/badge/Black%20Hat%20Asia-2027-red.svg)](https://www.blackhat.com/asia-27/arsenal.html)
-[![Hardware](https://img.shields.io/badge/Hardware-Raspberry%20Pi-green.svg)](https://www.raspberrypi.com/)
-[![Cost](https://img.shields.io/badge/Cost-%24290-blue.svg)](#-cost-comparison)
-[![Zero Cloud](https://img.shields.io/badge/Cloud-Zero%20dependency-orange.svg)](#-design-philosophy)
+[![Black Hat Asia 2027](https://img.shields.io/badge/Black%20Hat%20Asia-2027-IoT-red.svg)](https://www.blackhat.com/asia-27/arsenal.html)
+[![Track](https://img.shields.io/badge/Track-IoT-orange.svg)](#-black-hat-asia-2027--iot-track)
+[![Cost](https://img.shields.io/badge/Cost-%24290-blue.svg)](#-hardware--290-total)
+[![Zero Cloud](https://img.shields.io/badge/Cloud-Zero%20dependency-green.svg)](#-design-philosophy)
 
 </div>
 
@@ -20,58 +20,77 @@
 
 ## The Problem
 
-> **60% of small businesses close within 6 months of a cyberattack.**
-> Schools, small companies, and home labs face the same threats as enterprises — but can't afford enterprise solutions.
+> **IoT devices are the weakest link — and nobody's watching them.**
 
-| Solution | Annual Cost | Complexity |
-|----------|------------|------------|
-| SOC Team (in-house) | $500K–$2M | High |
-| Managed Security (MSSP) | $60K–$240K/yr | Medium |
-| Commercial Appliance (Fortinet) | $2K+ hardware + licensing | High |
-| **ULTRON** | **$290 (one-time)** | **Plug & play** |
+Smart devices, sensors, and edge hardware are exploding across every network. Traditional security tools don't see the sensor layer:
 
-Existing open-source tools (Snort, Wazuh, OpenVAS) **detect but don't respond**. ULTRON is the first open-source system that **monitors → scores → auto-remediates** in a single $290 package.
+- Physical tripwire tampering goes **undetected**
+- Compromised microcontrollers are **invisible** to enterprise IDS
+- Small organizations can't afford SOC teams ($500K+/yr)
+- Existing IoT security is either **too expensive** or **too passive**
+
+60% of small businesses close within 6 months of a cyberattack. The gap isn't more alerts — it's an **autonomous ecosystem** that detects, governs, and manages risk at the IoT layer.
 
 ---
 
 ## What Is ULTRON?
 
-A **modular cybersecurity appliance** built on 3 Raspberry Pi nodes. Plug it into any server room Ethernet switch and it immediately begins:
+An **autonomous IoT cybersecurity ecosystem** built on 3 Raspberry Pi nodes + 2 ESP32 microcontrollers. Plug it into any server room via Ethernet and it immediately begins:
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    30-SECOND PITCH                          │
-│                                                             │
-│  🔍 SCAN     nmap + Nuclei + Lynis — find every weakness   │
-│  🪤 LURE     Cowrie honeypot + canary files — trap attackers│
-│  🛡️ DETECT   Suricata IDS + GPIO tripwires — catch intrusions│
-│  🧠 SCORE    6 signals → single 0-100 risk score           │
-│  ⚡ RESPOND   Auto-heal: block IPs, restart services, quarantine│
-│  📊 REPORT   Live dashboard + email alerts + daily .md logs │
-│                                                             │
-│  Total cost: $290  |  Zero cloud  |  1 person (or none)     │
-└─────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────┐
+│                    ULTRON — 30 SECOND OVERVIEW                 │
+│                                                                │
+│  🔍 DETECT     Suricata IDS + Cowrie honeypot + canary files  │
+│                + ESP32 physical tripwire sensors               │
+│                                                                │
+│  📊 GOVERN     Risk scoring engine fuses 6 signals into        │
+│                a single 0-100 score → 4 bands drive response   │
+│                                                                │
+│  🔔 ALERT      Premium real-time dashboard (WebSocket)         │
+│                + email alerts + LED/OLED physical indicators    │
+│                                                                │
+│  💰 $290 total  |  🌐 Zero cloud  |  👤 1 operator (or none)   │
+└────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## How It Works
+## Black Hat Asia 2027 — IoT Track
 
-### Detection → Scoring → Response Pipeline
+**Phase 1 (Demo Scope):**
+
+| Pillar | What We Show |
+|--------|-------------|
+| **Detection** | Multi-layer IoT + network detection: Suricata IDS, Cowrie honeypot, canary files, ESP32 tripwire sensors, wireless monitoring |
+| **Governance** | Risk scoring engine: 6 weighted signals → 0-100 score → GREEN/YELLOW/RED/PURPLE bands with automated escalation policy |
+| **Alert Management** | Premium dashboard (real-time WebSocket), email alerts, NeoPixel + OLED physical indicators, daily Markdown reports |
+
+**Future Scope (Post-Demo):**
+
+| Phase | Capability |
+|-------|-----------|
+| **Phase 2** | Automated response — firewall rules, service restarts, IP quarantine |
+| **Phase 3** | Automated threat analysis & hunting — behavioral baselines, anomaly correlation, attack-path inference |
+
+---
+
+## How It Works — Detection → Governance → Alert
 
 ```
-┌─────────┐    ┌─────────┐    ┌─────────┐    ┌─────────┐    ┌─────────┐    ┌─────────┐
-│ DETECT  │───▶│ COLLECT │───▶│  SCORE  │───▶│ DECIDE  │───▶│ RESPOND │───▶│ REPORT  │
-└─────────┘    └─────────┘    └─────────┘    └─────────┘    └─────────┘    └─────────┘
-     │              │              │              │              │              │
-  Sensors       MQTT Events    Risk Score     Risk Band     Firewall      Dashboard
-  detect        publish to     clamp(0..100,  threshold     rules,        + Email
-  anomalies     broker         Σ × weights)   check         restart       + .md report
+┌─────────┐    ┌─────────┐    ┌─────────┐    ┌─────────┐    ┌─────────┐
+│ DETECT  │───▶│ COLLECT │───▶│  SCORE  │───▶│ DECIDE  │───▶│  ALERT  │
+└─────────┘    └─────────┘    └─────────┘    └─────────┘    └─────────┘
+     │              │              │              │              │
+  IoT + network  MQTT Events    Risk Score     Risk Band     Dashboard
+  sensors        publish to     clamp(0..100,  threshold     + Email
+  detect         broker         Σ × weights)   check         + LED/OLED
+  anomalies                                               + .md report
 ```
 
-### The Risk Scoring Engine
+### The Risk Governance Engine
 
-Fuses **6 signal sources** into a single score:
+Fuses **6 signal sources** into a single governed score:
 
 | Signal | Source | Weight |
 |--------|--------|--------|
@@ -79,19 +98,19 @@ Fuses **6 signal sources** into a single score:
 | Rule alerts | Suricata IDS signatures | 20% |
 | Scanner findings | nmap / Nuclei / Lynis | 15% |
 | IDS alerts | Network intrusion detection | 15% |
-| Tripwire | Physical enclosure sensors | 15% |
+| Tripwire | ESP32 physical sensors (IoT layer) | 15% |
 | Behavioral | Unusual traffic patterns | 10% |
 
-**Formula:** `Risk Score = clamp(0..100, Σ component × weight)` — decays 2 pts every 10 seconds.
+**Formula:** `Risk Score = clamp(0..100, Σ component × weight)` — decays 2 pts every 10 seconds toward baseline.
 
-### Risk Bands → Automated Response
+### Risk Bands → Escalation Policy
 
-| Band | Range | What Happens |
-|------|-------|-------------|
-| 🟢 **GREEN** | 0–29 | Normal monitoring. Breathing LED. |
-| 🟡 **YELLOW** | 30–59 | Increase scan frequency. Chasing LED. |
-| 🔴 **RED** | 60–84 | Activate IPS mode. Block IPs. Email alert. Strobe LED. |
-| 🟣 **PURPLE** | 85–100 | **Full quarantine.** All ports blocked. Tripwire buzzer. Pulsing LED. |
+| Band | Range | LED | Alert Action |
+|------|-------|-----|-------------|
+| 🟢 **GREEN** | 0–29 | Breathing | Normal monitoring. No action. |
+| 🟡 **YELLOW** | 30–59 | Chasing | Increase scan frequency. Detailed logging. Dashboard highlight. |
+| 🔴 **RED** | 60–84 | Strobe | Critical email alert. Dashboard alarm state. (IPS activation: Phase 2) |
+| 🟣 **PURPLE** | 85–100 | Pulsing | Highest escalation. Tripwire buzzer. Full incident report. (Quarantine: Phase 2) |
 
 ---
 
@@ -109,14 +128,13 @@ graph TB
         S3[Server N<br/>192.168.100.x]
     end
 
-    subgraph "ULTRON System"
+    subgraph "ULTRON IoT Ecosystem"
         subgraph "Pi4 — Brain (192.168.100.1)"
             MQTT[Mosquitto<br/>MQTT Broker]
-            RISK[Risk Engine]
+            RISK[Risk / Governance Engine]
             SCAN[Scanner Engine]
-            SELF[Self-Healer]
-            ALERT[Alert System]
-            DASH[Dashboard<br/>Port 8080]
+            ALERT[Alert Manager]
+            DASH[Premium Dashboard<br/>Port 8080]
         end
 
         subgraph "Pi3a — Attack (192.168.100.2)"
@@ -126,14 +144,14 @@ graph TB
         end
 
         subgraph "Pi3b — IDS (192.168.100.3)"
-            SURICATA[Suricata<br/>IDS/IPS]
+            SURICATA[Suricata<br/>IDS]
             AGGREGATOR[Dashboard<br/>Aggregator]
             WIFI[AC600<br/>WiFi AP]
         end
 
-        subgraph "ESP32 Layer"
+        subgraph "ESP32 IoT Layer"
             ESP32C3[ESP32-C3<br/>NeoPixel + OLED]
-            ESP32WR[ESP32-WROOM<br/>Tripwire]
+            ESP32WR[ESP32-WROOM<br/>Tripwire Sensors]
         end
     end
 
@@ -145,7 +163,7 @@ graph TB
     SWITCH -->|Ethernet| Pi4 & Pi3a & Pi3b
     
     Pi4 --> MQTT
-    MQTT --> RISK & SCAN & SELF & ALERT & DASH
+    MQTT --> RISK & SCAN & ALERT & DASH
     
     Pi3a --> COWRIE & CANARY & LURE
     COWRIE & CANARY & LURE -->|MQTT| MQTT
@@ -169,7 +187,7 @@ graph TB
 | **Wired LAN** (Production) | Server monitoring, scanning, IDS | 192.168.100.0/24 | Pi eth0 → Switch → Servers |
 | **WiFi Hotspot** (Management) | Operator dashboard access | 192.168.50.0/24 | Pi3b AC600 → Laptop |
 
-Production and management are **physically separated** — compromising WiFi doesn't expose monitoring infrastructure.
+Production and management are **physically separated** — compromising WiFi never exposes the monitoring infrastructure.
 
 ### Node Roles
 
@@ -181,11 +199,10 @@ Production and management are **physically separated** — compromising WiFi doe
 **Pi4 8GB | 192.168.100.1**
 
 - MQTT Broker (Mosquitto)
-- Risk Scoring Engine
+- Risk / Governance Engine
 - Scanner (nmap + Nuclei + Lynis)
-- Self-Healing Framework
-- Dashboard (Port 8080)
-- Alert System (SMTP)
+- Alert Manager (SMTP + WebSocket)
+- **Premium Dashboard (Port 8080)**
 
 </td>
 <td width="33%">
@@ -204,7 +221,7 @@ Production and management are **physically separated** — compromising WiFi doe
 ### 🛡️ Pi3b — IDS Gateway
 **Pi3B+ 1GB | 192.168.100.3**
 
-- Suricata IDS/IPS
+- Suricata IDS
 - Dashboard Aggregator
 - AC600 WiFi Hotspot
 - dnsmasq (DHCP + DNS)
@@ -213,54 +230,25 @@ Production and management are **physically separated** — compromising WiFi doe
 </tr>
 </table>
 
----
-
-## What Makes ULTRON Different
+### ESP32 IoT Sensor Layer
 
 <table>
 <tr>
 <td width="50%">
 
-### 🔍 Not Just Detection — **Response**
-
-Existing tools stop at alerts. ULTRON auto-heals:
-- ❌ Unauthorized SSH? → Kill session + block IP
-- ❌ Open port found? → Close via nftables
-- ❌ Expired TLS cert? → Auto-renew with certbot
-- Circuit breaker prevents remediation loops
+### 💡 ESP32-C3 — Indicator Node
+- WS2812B NeoPixel ring (8 LEDs) — live risk-band color
+- SSD1306 OLED — risk score + node status text
+- USB serial link to Pi4
 
 </td>
 <td width="50%">
 
-### 🎓 Dual Mode: Production + Education
-
-**ULTRON Mode:** Full autonomous protection. 24/7, zero human needed.
-
-**LAB Mode:** Live CTF training platform. Students attack a real security stack, earn leaderboard points. Challenges include port scanning, vuln hunting, honeypot escape, and full compromise.
-
-</td>
-</tr>
-<tr>
-<td width="50%">
-
-### 🔌 Physical + Digital Feedback
-
-Not just software — ULTRON has a physical presence:
-- NeoPixel ring shows threat color in real-time
-- OLED displays current risk score
-- Tripwire sensors detect enclosure tampering
-- Buzzer sounds on PURPLE quarantine
-
-</td>
-<td width="50%">
-
-### 🌐 Zero Cloud, Zero Agents
-
-- No internet required after setup
-- No agents installed on production servers
-- All processing happens locally
-- MQTT-only communication (no HTTP between nodes)
-- SQLite for local persistence
+### 🔒 ESP32-WROOM — Tripwire Node
+- GPIO16 → Pi3a enclosure sensor
+- GPIO17 → Pi3b enclosure sensor
+- Passive buzzer alarm (GPIO4)
+- Enclosure tamper detection (pull-up, trigger LOW)
 
 </td>
 </tr>
@@ -268,68 +256,111 @@ Not just software — ULTRON has a physical presence:
 
 ---
 
+## 📊 Premium Dashboard
+
+> **No compromise.** The dashboard is the centerpiece of the alert-management pillar.
+
+**Single HTML file** — pure HTML + CSS + vanilla JavaScript. No frameworks, no build tools, no CDN dependencies. Served from Pi4 on port 8080 with real-time WebSocket push from MQTT.
+
+### Design Standard
+
+| Requirement | Standard |
+|-------------|----------|
+| **Latency** | Event → screen in <100ms (WebSocket push, no polling) |
+| **Visual language** | Risk-band color themes entire UI (GREEN/YELLOW/RED/PURPLE) |
+| **Typography** | Monospace technical aesthetic, consistent spacing scale |
+| **Components** | Animated risk gauge, sparkline history, alert cards, node health grid |
+| **Dark theme** | Default dark UI — operator-grade, no glare |
+| **Responsiveness** | Works on laptop + tablet (operator anywhere on management WiFi) |
+| **Zero dependencies** | No React, no CDN, no npm — one file you can open offline |
+
+### Panel Layout
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  ULTRON // IoT SECURITY ECOSYSTEM              [ULTRON MODE]│
+├────────────┬────────────┬────────────┬──────────────────────┤
+│  RISK      │  BAND      │  NODES     │  DETECTION LAYERS    │
+│  ┌──────┐  │  🟢 GREEN  │  Pi4  ✅   │  IDS        ✅       │
+│  │ 42   │  │            │  Pi3a ✅   │  Honeypot   ✅       │
+│  │/100  │  │  score: 42 │  Pi3b ✅   │  Scanners   ✅       │
+│  └──────┘  │            │  ESP32 ✅  │  Tripwire   ✅       │
+├────────────┴────────────┴────────────┴──────────────────────┤
+│  ACTIVE ALERTS                              [ACK] [EXPORT]   │
+│  🔴 CRITICAL  Suricata: ET SCAN masscan detected  2m ago    │
+│  🟡 WARNING   Cowrie: SSH brute-force 10.0.0.55    5m ago   │
+│  🟢 INFO      Canary: /etc/passwd accessed         8m ago   │
+├─────────────────────────────────────────────────────────────┤
+│  RISK HISTORY (24h)     │  RECENT SCANS     │  ALERT LOG    │
+│  ~~~~/\__/~~~ line      │  nmap: 12 hosts   │  47 events    │
+│  chart color-coded      │  nuclei: 0 CVEs   │  last 24h     │
+├─────────────────────────────────────────────────────────────┤
+│  GOVERNANCE: score decay 2pts/10s │ reports: daily .md      │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Alert Management Features
+
+- **Real-time push** — MQTT → WebSocket → DOM update, no refresh
+- **Severity tiers** — CRITICAL / WARNING / INFO with distinct visuals
+- **Acknowledgement** — operators can ack alerts (state synced to SQLite)
+- **Export** — one-click Markdown report download
+- **Email** — RED/PURPLE bands trigger SMTP notification
+- **Physical echo** — LED color + OLED text mirror dashboard state
+
+---
+
 ## Hardware — $290 Total
 
-| # | Component | Cost | Purpose |
-|---|-----------|------|---------|
-| 1 | Raspberry Pi 4 (8GB) | $75 | Brain — orchestrator, scanner, dashboard |
+| # | Component | Cost | Role |
+|---|-----------|------|------|
+| 1 | Raspberry Pi 4 (8GB) | $75 | Brain — orchestrator, risk engine, dashboard |
 | 2 | Raspberry Pi 3B+ (×2) | $60 | Attack node + IDS gateway |
 | 3 | 500GB USB SSD | $35 | Logs, evidence vault |
-| 4 | ESP32-C3 SuperMini | $4 | NeoPixel LED + OLED display |
-| 5 | ESP32-WROOM-32 | $5 | Tripwire sensors + buzzer |
+| 4 | ESP32-C3 SuperMini | $4 | NeoPixel + OLED indicator node |
+| 5 | ESP32-WROOM-32 | $5 | Tripwire sensor node |
 | 6 | WS2812B NeoPixel Ring | $3 | Visual threat indicator |
 | 7 | SSD1306 OLED | $3 | Text status display |
 | 8 | TL-WN722N + AC600 | $24 | Monitor mode + WiFi hotspot |
 | 9 | 5-Port Switch + Hub + Wire | $26 | LAN backbone + GPIO wiring |
 | 10 | Power + Cooling | $22 | 3 adapters + USB fan |
-| | | **~$263** | |
+| | **Total** | **~$263** | + case ≈ $290 |
 
-**vs. Enterprise alternatives:** Fortinet ($2K+), Palo Alto ($5K+), CrowdStrike ($10K+/yr).
+### Power Budget
+
+| Component | Power |
+|-----------|-------|
+| Pi4 8GB | 15W |
+| Pi3a + Pi3b | 10W |
+| SSD + WiFi + ESP32s + fan | ~10W |
+| **Total** | **~38W** |
+
+---
+
+## Design Philosophy
+
+- **Zero cloud dependency** — all processing local, MQTT internal only
+- **Fail-closed defaults** — deny-all firewall, authenticated broker, key-only SSH
+- **Modular IoT ecosystem** — add sensors/nodes without redesign
+- **Observable posture** — every event scored, displayed, physically echoed
+- **Minimal admin** — automated detection + governance; 1 operator (or none)
+- **Phased autonomy** — Phase 1 detects/governs/alerts; Phase 2 responds; Phase 3 hunts
 
 ---
 
 ## Operating Modes
 
-### ULTRON Mode (Default)
-```
-✅ Auto-scan every 15 min    ✅ Risk engine continuous
-✅ Self-healing ON           ✅ Suricata: IDS → IPS (score > 60)
-✅ Email alerts              ✅ ESP32: live threat color
-✅ TL-WN722N: monitor only   ✅ Full autonomous 24/7
-```
+### ULTRON Mode (Default — Production)
+- Auto-scan every 15 min, continuous risk scoring
+- Alert manager active (dashboard + email)
+- Suricata IDS monitoring, LED live risk-band color
+- Fully autonomous 24/7
 
-### LAB Mode (Education)
-```
-✅ Student-triggered scans   ✅ Risk scores (no auto-response)
-✅ Honeypot + canaries active ✅ Leaderboard + challenges
-✅ TL-WN722N: full attack     ✅ ESP32: shows risk, no quarantine
-🎓 Challenges: Port Scan, Vuln Hunt, WiFi Recon, Honeypot Escape
-```
-
----
-
-## Dashboard
-
-Single HTML file, no frameworks, no build tools. Real-time via WebSocket.
-
-```
-┌─────────────────────────────────────────────────┐
-│                 ULTRON DASHBOARD                  │
-├──────────┬──────────┬──────────┬─────────────────┤
-│ RISK     │ BAND     │ NODE     │ MODE            │
-│ SCORE    │ COLOR    │ STATUS   │ ULTRON / LAB    │
-│ (gauge)  │ (green/  │ (3 nodes │                 │
-│          │ yellow/  │ up/down) │                 │
-│          │ red/     │          │                 │
-│          │ purple)  │          │                 │
-├──────────┴──────────┴──────────┴─────────────────┤
-│              ACTIVE ALERTS                        │
-├──────────────────────────────────────────────────┤
-│         RECENT SCANS + SELF-HEALING LOG           │
-├──────────────────────────────────────────────────┤
-│         RISK HISTORY (24h chart)                  │
-└──────────────────────────────────────────────────┘
-```
+### LAB Mode (Education / CTF)
+- Student-triggered scans only, scoring without auto-escalation
+- Honeypot + canaries live as CTF targets
+- Leaderboard + challenges (Port Scan, Vuln Hunt, WiFi Recon, Honeypot Escape)
+- TL-WN722N full attack capability
 
 ---
 
@@ -337,44 +368,60 @@ Single HTML file, no frameworks, no build tools. Real-time via WebSocket.
 
 ```bash
 # 1. Flash Raspberry Pi OS Lite to 3 microSD cards
-# 2. Configure static IPs:
-#    Pi4: 192.168.100.1 | Pi3a: .2 | Pi3b: .3
+# 2. Static IPs: Pi4=192.168.100.1 | Pi3a=.2 | Pi3b=.3
 
-# 3. On all nodes:
+# 3. All nodes:
 sudo apt update && sudo apt upgrade -y
 sudo apt install -y python3 python3-pip mosquitto mosquitto-clients
 
-# 4. On Pi4 (Brain):
+# 4. Pi4 (Brain):
 sudo apt install -y sqlite3 nmap nuclei lynis
 
-# 5. On Pi3a (Attack):
+# 5. Pi3a (Attack):
 sudo apt install -y cowrie auditd
 
-# 6. On Pi3b (IDS):
+# 6. Pi3b (IDS):
 sudo apt install -y suricata hostapd dnsmasq
 
-# 7. Clone + deploy:
+# 7. Deploy:
 git clone https://github.com/ADITYA02NM/ULTRON.git
 cd ULTRON && pip3 install -r requirements.txt
 sudo cp systemd/*.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now sentinel-*
+sudo systemctl daemon-reload && sudo systemctl enable --now sentinel-*
 
-# 8. Connect Pi3b's AC600 WiFi → browse to http://192.168.100.1:8080
+# 8. Connect to SENTINEL-SECURE WiFi → http://192.168.100.1:8080
 ```
+
+See [`promt.md`](promt.md) for the full hardware-role assignment prompt (premium AI operating brief).
 
 ---
 
 ## Roadmap
 
-| Phase | Milestone | Status |
+| Phase | Capability | Status |
 |-------|-----------|--------|
-| **v1.0** | Core architecture + risk scoring | ✅ Designed |
-| **v1.1** | Self-healing engine + circuit breaker | ✅ Designed |
-| **v1.2** | Dashboard + WebSocket real-time | ✅ Designed |
-| **v2.0** | LAB mode + leaderboard + CTF challenges | 📋 Planned |
-| **v3.0** | ULTRON-X: Jetson Nano variant (ML anomaly detection) | 📋 Planned |
-| **Black Hat** | Asia 2027 Arsenal demo | 🎯 Target |
+| **Phase 1 — Black Hat Demo** | Detection + Governance + Alert Management | 🎯 Current |
+| **Phase 2** | Automated response (firewall, restarts, quarantine) | 📋 Future |
+| **Phase 3** | Automated threat analysis & hunting (behavioral baselines, anomaly correlation, attack-path inference) | 📋 Future |
+| **ULTRON-X** | Jetson Nano variant — ML-powered anomaly detection | 📋 Future |
+| **Black Hat** | Asia 2027 Arsenal — IoT track demo | 🎯 Target |
+
+---
+
+## Repository Structure
+
+```
+ULTRON/
+├── README.md          # This file — IoT ecosystem pitch
+├── architecture.md    # In-depth architecture (networks, nodes, pipeline, MQTT)
+├── dashboard.md       # Premium dashboard full specification + acceptance gates
+├── promt.md           # Premium AI prompt — hardware-role assignments
+├── blackhat.md        # Full research paper / technical spec (Black Hat IoT track)
+├── hardware.png       # Hardware architecture diagram
+├── assets/
+│   └── ultron-banner.svg
+└── ULTRON(SEN3)/      # Local backup (gitignored)
+```
 
 ---
 
@@ -395,8 +442,8 @@ MIT License — use it, modify it, deploy it.
 
 <div align="center">
 
-**Built for the organizations that can't afford to be unprotected.**
+**An autonomous IoT ecosystem that detects, governs, and alerts — for $290.**
 
-[![Black Hat Asia 2027](https://img.shields.io/badge/Black%20Hat%20Asia-2027-Arsenal-red)](https://www.blackhat.com/asia-27/arsenal.html)
+[![Black Hat Asia 2027](https://img.shields.io/badge/Black%20Hat%20Asia-2027-IoT-Arsenal-red)](https://www.blackhat.com/asia-27/arsenal.html)
 
 </div>
