@@ -84,13 +84,17 @@ function CommandConsoleImpl() {
   return (
     <div className="cmd-console">
       <div className="cmd-input-wrap">
+        <span className="cmd-caret" aria-hidden="true">&gt;</span>
         <input ref={inputRef} className="cmd-input" type="text" value={input}
-          onChange={onChange} onKeyDown={onKey}
-          placeholder="/ command · Ctrl+K to focus" spellCheck={false} />
-        <button className="cmd-go" onClick={submit} disabled={!input.trim()}>▶</button>
+          onChange={onChange} onKeyDown={onKey} aria-label="Command"
+          placeholder="/help" spellCheck={false} autoComplete="off" />
+        <button className="cmd-go" onClick={submit} disabled={!input.trim()}>Run</button>
+      </div>
+      <div className="cmd-hints">
+        <kbd>Ctrl K</kbd> focus · <kbd>Tab</kbd> complete · <kbd>↑</kbd><kbd>↓</kbd> history · <kbd>Enter</kbd> run · <kbd>Esc</kbd> clear
       </div>
       {suggestions.length > 0 && (
-        <div className="cmd-suggest">
+        <div className="cmd-suggest" role="listbox">
           {suggestions.slice(0, 6).map((s) => (
             <div key={s.name} className={`cmd-sug-row${s.phase2 ? " disabled" : ""}`}
               onClick={() => { if (!s.phase2) { setInput(`/${s.name} `); setSuggestions([]); inputRef.current?.focus(); } }}>
@@ -108,7 +112,7 @@ function CommandConsoleImpl() {
         ))}
         {COMMANDS.filter((c) => c.phase2).map((c) => (
           <button key={c.name} className="cmd-chip disabled" disabled
-            title="Response actions are Phase 2 — notify-only in Phase 1">/{c.name}</button>
+            title="Response actions are Phase 2 — notify-only in Phase 1">/{c.name}<span className="cmd-chip-ph">P2</span></button>
         ))}
       </div>
       <div className="cmd-layers">

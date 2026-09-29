@@ -78,7 +78,7 @@ function IoTGraphImpl() {
   }, []);
 
   if (!devices.length) {
-    return <div className="iot-empty empty">No external devices observed yet</div>;
+    return <div className="iot-empty empty">Awaiting ARP — no external devices observed</div>;
   }
 
   return (
@@ -112,19 +112,22 @@ function IoTGraphImpl() {
           const isLit = litMacs.has(p.dev.mac);
           const isSelected = selectedMac === p.dev.mac;
           return (
-            <g key={p.dev.mac} onClick={() => onClickDevice(p.dev.mac)}
-              style={{ cursor: "pointer" }}>
+            <g key={p.dev.mac} className="iot-node" onClick={() => onClickDevice(p.dev.mac)}
+              tabIndex={0} role="button" aria-pressed={isSelected}
+              aria-label={`${p.dev.vendor || "Unknown vendor"} ${p.dev.ip || ""}${isUnknown ? ", unknown device" : ""}`}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClickDevice(p.dev.mac); } }}>
               <rect x={p.x - 38} y={p.y - 20} width={76} height={40} rx={4}
                 fill={isSelected ? "var(--accent-weak)" : "var(--panel-2)"}
                 stroke={isUnknown ? "var(--yellow)" : isLit ? "var(--accent)" : "var(--border)"}
                 strokeWidth={isSelected ? 2 : isUnknown ? 1.5 : 1}
                 strokeDasharray={isUnknown ? "4 2" : "none"} />
+              {isUnknown && (
+                <path className="iot-unknown-mark" d={`M${p.x - 32} ${p.y - 20}l6 6-6 6-6-6z`}>
+                  <title>Unknown device</title>
+                </path>
+              )}
               {isNew && !reduce && (
-                <circle cx={p.x + 32} cy={p.y - 14} r={4}
-                  fill="var(--accent)" opacity={0.8}>
-                  <animate attributeName="r" values="3;6;3" dur="1.5s" repeatCount="indefinite" />
-                  <animate attributeName="opacity" values="0.8;0.3;0.8" dur="1.5s" repeatCount="indefinite" />
-                </circle>
+                <circle className="iot-new-dot" cx={p.x + 32} cy={p.y - 14} r={4} fill="var(--accent)" />
               )}
               <text x={p.x} y={p.y - 6} textAnchor="middle" className="iot-label"
                 style={{ fontSize: 8 }}>{p.dev.vendor || "unknown"}</text>
@@ -142,7 +145,7 @@ function IoTGraphImpl() {
         <div className="iot-detail">
           <div className="iot-detail-hd">
             <span className="iot-detail-vendor">{selectedDev.vendor || "Unknown"}</span>
-            <button className="iot-detail-close" onClick={() => setSelectedMac(null)}>×</button>
+            <button className="iot-detail-close" aria-label="Close device details" onClick={() => setSelectedMac(null)}>×</button>
           </div>
           <div className="iot-detail-row"><span className="k">IP</span><span>{selectedDev.ip || "—"}</span></div>
           <div className="iot-detail-row"><span className="k">MAC</span><span className="num">{selectedDev.mac}</span></div>
@@ -151,7 +154,7 @@ function IoTGraphImpl() {
           <div className="iot-detail-row"><span className="k">Last seen</span><span className="num">{selectedDev.lastSeen ? utcTime(selectedDev.lastSeen) : "—"}</span></div>
           {selectedEvents.length > 0 && (
             <>
-              <div className="label" style={{ marginTop: 8 }}>RECENT EVENTS</div>
+              <div className="label iot-detail-sub">Recent events</div>
               {selectedEvents.map((ev) => (
                 <div key={ev.id} className={`iot-detail-ev sev-${ev.sev}`}>
                   <span className="num">{utcTime(ev.ts)}</span>

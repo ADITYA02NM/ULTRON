@@ -11,6 +11,8 @@ const DEF = [
   { id: "esp32", nm: "ESP32", pil: "Indicator+Tripwire", ip: "USB / GPIO", svc: ["C3 OLED/LED", "WROOM reed"] },
 ];
 
+const STATE: Record<string, string> = { up: "up", warn: "stale", down: "down", "": "no data" };
+
 function NodeTilesImpl({ compact }: { compact?: boolean }) {
   rc("NodeTiles");
   const nodes = useStore((s) => s.nodes);
@@ -25,10 +27,11 @@ function NodeTilesImpl({ compact }: { compact?: boolean }) {
     return (
       <div className="tiles-compact">
         {DEF.map((n) => (
-          <div className="tile-mini" key={n.id}>
-            <span className={"sd " + st(n.id)} />
+          <div className={"tile-mini " + st(n.id)} key={n.id}>
+            <span className={"sd " + st(n.id)} aria-hidden="true" />
             <span className="nm">{n.nm}</span>
             <span className="pil">{n.pil}</span>
+            <span className="tm-state">{STATE[st(n.id)]}</span>
             {nodes[n.id]?.up != null && <span className="num up">{uptime(nodes[n.id]!.up)}</span>}
           </div>
         ))}

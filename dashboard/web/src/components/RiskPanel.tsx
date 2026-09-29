@@ -54,14 +54,20 @@ function RiskPanelImpl() {
   return (
     <div className="risk">
       <svg className="ring" viewBox="0 0 180 180" role="img" aria-label="Risk gauge">
-        <circle cx={CX} cy={CY} r={R} fill="none" stroke="var(--border)" strokeWidth="10" />
-        <circle ref={valRef} cx={CX} cy={CY} r={R} fill="none" stroke="var(--accent)" strokeWidth="10"
-          strokeLinecap="round" strokeDasharray={C} strokeDashoffset={C}
+        <circle cx={CX} cy={CY} r={R} fill="none" stroke="var(--border-2)" strokeWidth="2" />
+        <circle ref={valRef} cx={CX} cy={CY} r={R} fill="none" stroke="var(--accent)" strokeWidth="6"
+          strokeLinecap="butt" strokeDasharray={C} strokeDashoffset={C}
           transform={`rotate(-90 ${CX} ${CY})`}
-          style={{ transition: reduce ? "none" : "stroke 200ms" }} />
+          style={{ transition: reduce ? "none" : "stroke var(--dur)" }} />
         {[30, 60, 85].map((v) => {
-          const p = tickPos(v / 100, R - 8, R + 8);
-          return <line key={v} x1={p.x1} y1={p.y1} x2={p.x2} y2={p.y2} stroke="var(--muted)" strokeWidth="2" />;
+          const p = tickPos(v / 100, R - 5, R + 5);
+          const l = tickPos(v / 100, R + 13, R + 13);
+          return (
+            <g key={v}>
+              <line x1={p.x1} y1={p.y1} x2={p.x2} y2={p.y2} stroke="var(--muted)" strokeWidth="1.5" />
+              <text className="ring-lbl" x={l.x1} y={l.y1} textAnchor="middle" dominantBaseline="middle">{v}</text>
+            </g>
+          );
         })}
       </svg>
       <div className="read">

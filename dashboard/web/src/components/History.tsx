@@ -1,8 +1,7 @@
 import { memo, useEffect, useRef } from "react";
 import { store } from "../store/store";
 import { bandForScore } from "../lib/bands";
-
-const COL: Record<string, string> = { GREEN: "#22c55e", YELLOW: "#eab308", RED: "#ef4444", PURPLE: "#a855f7" };
+import { cssVar } from "../lib/cssVars";
 
 function HistoryImpl({ compact }: { compact?: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -13,13 +12,19 @@ function HistoryImpl({ compact }: { compact?: boolean }) {
       const c = canvasRef.current; if (!c) return;
       const hist = store.getState().history;
       const dpr = window.devicePixelRatio || 1;
-      const h0 = compact ? 80 : 150;
+      const h0 = parseFloat(cssVar(compact ? "--spark-h-compact" : "--spark-h"));
       const w = (c.width = Math.floor(c.clientWidth * dpr));
       const h = (c.height = Math.floor(h0 * dpr));
       const ctx = c.getContext("2d"); if (!ctx) return;
       ctx.clearRect(0, 0, w, h);
-      ctx.strokeStyle = "#22303f"; ctx.lineWidth = dpr; ctx.setLineDash([4 * dpr, 4 * dpr]);
-      [30, 60, 85].forEach((g) => { const y = h - (g / 100) * h; ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke(); });
+      ctx.strokeStyle = cssVar("--border"); ctx.lineWidth = dpr; ctx.setLineDash([4 * dpr, 4 * dpr]);
+      const fs = parseFloat(cssVar("--fs-xs")) * dpr;
+      ctx.font = `${fs}px ${cssVar("--mono")}`; ctx.textAlign = "right"; ctx.textBaseline = "bottom";
+      [30, 60, 85].forEach((g) => {
+        const y = h - (g / 100) * h;
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w - fs * 2.2, y); ctx.stroke();
+        ctx.fillStyle = cssVar("--muted-2"); ctx.fillText(String(g), w - 2 * dpr, y + fs / 2);
+      });
       ctx.setLineDash([]);
       if (!hist.length) { if (noteRef.current) noteRef.current.textContent = "history empty — skeleton"; return; }
       if (noteRef.current) noteRef.current.textContent = `${hist.length} samples · ${hist[hist.length - 1]![1]} now`;
@@ -27,7 +32,7 @@ function HistoryImpl({ compact }: { compact?: boolean }) {
       for (let i = 1; i < hist.length; i++) {
         const x0 = ((hist[i - 1]![0] - t0) / span) * w, x1 = ((hist[i]![0] - t0) / span) * w;
         const y0 = h - (hist[i - 1]![1] / 100) * h, y1 = h - (hist[i]![1] / 100) * h;
-        ctx.strokeStyle = COL[bandForScore(hist[i]![1])] || "#22c55e"; ctx.lineWidth = 2 * dpr;
+        ctx.strokeStyle = cssVar("--" + bandForScore(hist[i]![1]).toLowerCase()); ctx.lineWidth = 1.5 * dpr;
         ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
       }
     };
@@ -41,8 +46,7 @@ function HistoryImpl({ compact }: { compact?: boolean }) {
 
   return (
     <div className={compact ? "hist-compact" : ""}>
-      <canvas className={`spark${compact ? " spark-compact" : ""}`} ref={canvasRef}
-        style={compact ? { height: 80 } : undefined} />
+      <canvas className={`spark${compact ? " spark-compact" : ""}`} ref={canvasRef} />
       {!compact && <div className="histnote" ref={noteRef}>awaiting history…</div>}
       {compact && <div className="histnote" ref={noteRef} />}
     </div>

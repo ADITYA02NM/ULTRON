@@ -14,5 +14,15 @@ export default defineConfig({
     modulePreload: { polyfill: false },
     cssCodeSplit: false,
   },
-  server: { port: 5173 },
+  server: {
+    port: 5173,
+    proxy: {
+      "/ws": {
+        target: "ws://localhost:8081",
+        ws: true,
+      },
+      "/healthz": "http://localhost:8081",
+      "/auth": "http://localhost:8081",
+    },
+  },
 });

@@ -86,10 +86,11 @@ describe("store.applyBatch", () => {
     expect(s.getState().openCount).toBe(0);
     expect(s.getState().alerts[0]!.ack).toBe(true);
   });
-  it("routes suricata/wifi alerts into detection layers", () => {
+  // CP5 contract: suricata/wifi arrive as t:"event", never t:"alert".
+  it("routes suricata/wifi events into detection layers", () => {
     const s = new Store();
-    s.applyBatch([env("alert", { id: "a", sev: "red", title: "t", src: "suricata/eth0", body: "b", ack: false })]);
-    s.applyBatch([env("alert", { id: "b", sev: "yellow", title: "t", src: "wifi", body: "b", ack: false })]);
+    s.applyBatch([env("event", { topic: "ultron/suricata/eth0", node: "pi3a", kind: "suricata", sev: "red", summary: "ET x" })]);
+    s.applyBatch([env("event", { topic: "ultron/wifi/rogue", node: "pi3a", kind: "wifi", sev: "yellow", summary: "rogue AP" })]);
     expect(s.getState().layers.idsCount).toBe(1);
     expect(s.getState().layers.wifiRogue).toBe(true);
   });

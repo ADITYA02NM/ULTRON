@@ -1,10 +1,33 @@
 import { useEffect, useState } from "react";
 import { useStore } from "../store/store";
 import { store } from "../store/store";
+import { HardwareTwin } from "./HardwareTwin";
 import {
   checkAuth, setupBegin, setupComplete,
   loginBegin, loginComplete,
 } from "../lib/auth";
+
+// Static facts only: nothing on the lock screen may reflect live data before auth.
+const TRUST = ["Zero cloud", "Owner-only passkey", "~$290 · ~38 W", "Event → screen < 100 ms", "Phase 1: notify-only"];
+
+function AuthLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <main className="auth-screen">
+      <section className="auth-hero">
+        <h1 className="auth-logo">ULT<b>RON</b></h1>
+        <p className="auth-subtitle">Detect → govern → alert for the smart-home IoT layer. Zero cloud.</p>
+        <div className="auth-action">{children}</div>
+        <ul className="auth-trust">
+          {TRUST.map((t) => <li key={t}>{t}</li>)}
+        </ul>
+      </section>
+      <aside className="auth-visual" aria-hidden="true">
+        <HardwareTwin idle />
+        <span className="auth-visual-cap">Pi4 · Pi3a · Pi3b · ESP32-C3 · ESP32-WROOM — one shelf, one switch</span>
+      </aside>
+    </main>
+  );
+}
 
 function SetupScreen() {
   const urlToken = new URLSearchParams(location.search).get("t") ?? "";
@@ -38,36 +61,24 @@ function SetupScreen() {
 
   if (!hasToken) {
     return (
-      <div className="auth-screen">
-        <div className="auth-card">
-          <div className="auth-logo">ULT<b>RON</b></div>
-          <div className="auth-title">Owner Setup</div>
-          <p className="auth-hint">
-            No owner registered. Run the CLI command to create an enrollment token:
-          </p>
-          <pre className="auth-cli-hint">python -m server.auth_cli enroll-token</pre>
-          <p className="auth-hint">
-            Then open the link printed by the command.
-          </p>
-        </div>
-      </div>
+      <AuthLayout>
+        <h2 className="auth-title">Owner setup</h2>
+        <p className="auth-hint">No owner registered. Create an enrollment token on the Pi4:</p>
+        <pre className="auth-cli-hint">python -m server.auth_cli enroll-token</pre>
+        <p className="auth-hint">Then open the link the command prints.</p>
+      </AuthLayout>
     );
   }
 
   return (
-    <div className="auth-screen">
-      <div className="auth-card">
-        <div className="auth-logo">ULT<b>RON</b></div>
-        <div className="auth-title">Register Passkey</div>
-        <p className="auth-hint">
-          Register a passkey to become the dashboard owner.
-        </p>
-        <button className="auth-btn" onClick={handleSetup} disabled={busy} autoFocus>
-          Register Passkey
-        </button>
-        {status && <div className="auth-status">{status}</div>}
-      </div>
-    </div>
+    <AuthLayout>
+      <h2 className="auth-title">Register passkey</h2>
+      <p className="auth-hint">Register a passkey to become the dashboard owner.</p>
+      <button className="auth-btn" onClick={handleSetup} disabled={busy} autoFocus>
+        Register passkey
+      </button>
+      {status && <div className="auth-status" role="status">{status}</div>}
+    </AuthLayout>
   );
 }
 
@@ -93,28 +104,20 @@ function LoginScreen() {
   }
 
   return (
-    <div className="auth-screen">
-      <div className="auth-card">
-        <div className="auth-logo">ULT<b>RON</b></div>
-        <div className="auth-title">Authenticate</div>
-        <p className="auth-hint">Use your registered passkey to unlock the dashboard.</p>
-        <button className="auth-btn" onClick={handleLogin} disabled={busy} autoFocus>
-          Unlock with Passkey
-        </button>
-        {status && <div className="auth-status">{status}</div>}
-      </div>
-    </div>
+    <AuthLayout>
+      <button className="auth-btn" onClick={handleLogin} disabled={busy} autoFocus>
+        Unlock with passkey
+      </button>
+      {status && <div className="auth-status" role="status">{status}</div>}
+    </AuthLayout>
   );
 }
 
 function CheckingScreen() {
   return (
-    <div className="auth-screen">
-      <div className="auth-card">
-        <div className="auth-logo">ULT<b>RON</b></div>
-        <div className="auth-status">Checking session...</div>
-      </div>
-    </div>
+    <AuthLayout>
+      <div className="auth-status" role="status">Checking session…</div>
+    </AuthLayout>
   );
 }
 

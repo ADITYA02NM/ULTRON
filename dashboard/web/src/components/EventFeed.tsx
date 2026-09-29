@@ -4,10 +4,9 @@ import type { UEvent } from "../store/store";
 import { transport } from "../transport/transport";
 import { utcTime } from "../lib/format";
 import { useReducedMotion } from "../hooks/useNow";
+import { KindIcon, SevIcon } from "./Icons";
+import { cssVar } from "../lib/cssVars";
 
-const KIND_ICON: Record<string, string> = {
-  alert: "▲", suricata: "◆", wifi: "◇", lan: "●", tripwire: "⚡", band: "◉",
-};
 const NODE_SHORT: Record<string, string> = {
   pi4: "GOV", pi3a: "DET", pi3b: "ALR", esp32: "ESP",
 };
@@ -19,17 +18,18 @@ const EventRow = memo(function EventRow({ e, isNew }: { e: UEvent; isNew: boolea
   useEffect(() => {
     if (!isNew || reduce || !ref.current) return;
     ref.current.animate(
-      [{ transform: "translateY(-6px)", opacity: 0 }, { transform: "none", opacity: 1 }],
-      { duration: 180, easing: "cubic-bezier(0.22,0.61,0.36,1)" }
+      [{ transform: `translateY(-${cssVar("--enter-offset")})`, opacity: 0 }, { transform: "none", opacity: 1 }],
+      { duration: parseFloat(cssVar("--dur-enter")), easing: cssVar("--ease") }
     );
   }, [isNew, reduce]);
 
   return (
     <div className={`ev-row sev-${e.sev}`} ref={ref}>
       <span className="ev-bar" />
+      <SevIcon sev={e.sev} />
       <span className="ev-time num">{utcTime(e.ts)}</span>
       <span className={`ev-node node-${e.node}`}>{NODE_SHORT[e.node] || e.node}</span>
-      <span className="ev-icon" title={e.kind}>{KIND_ICON[e.kind] || "·"}</span>
+      <KindIcon kind={e.kind} />
       <span className="ev-summary">{e.summary}</span>
       {e.derived && <span className="ev-derived" title="Derived severity">~</span>}
       {e.alertId && (
@@ -70,7 +70,7 @@ function EventFeedImpl() {
             </button>
           ))}
         </div>
-        <div className="empty">No alerts — all quiet in the sensor mesh</div>
+        <div className="empty">Sensor mesh idle — no events ingested</div>
       </div>
     );
   }

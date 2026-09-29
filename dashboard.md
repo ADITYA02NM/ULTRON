@@ -44,44 +44,46 @@
 
 ## 3. Visual System
 
+Direction: **Intelligence Brief** — an editorial security briefing: warm off-black, serif gravity, one restrained signal colour. Full rationale, references and the signature element are in [`design/DESIGN.md`](design/DESIGN.md); this section is the implementation contract.
+
 ### Tokens
 
-```css
-:root {
-  --bg: #0a0e14;
-  --panel: #111823;
-  --border: #1e2a3a;
-  --text: #d7e0ea;
-  --muted: #7a8b9f;
-  --green: #22c55e;
-  --yellow: #eab308;
-  --red: #ef4444;
-  --purple: #a855f7;
-  --accent: var(--green); /* overridden by band */
-}
-html[data-band="GREEN"]  { --accent: var(--green); }
-html[data-band="YELLOW"] { --accent: var(--yellow); }
-html[data-band="RED"]    { --accent: var(--red); }
-html[data-band="PURPLE"] { --accent: var(--purple); }
-```
+All values live in `web/src/styles/tokens.css` and nowhere else (enforced by `npm run check:tokens` and `tests/token-lint.test.ts`: no raw hex, rgb(), px or ms outside tokens, bar 0/1/2px, the OLED canvas, SVG viewBox units and `@media` breakpoints). Colours are sRGB hex in `:root`, overridden by `oklch()` under `@supports`. Canvas code reads tokens through `src/lib/cssVars.ts` (cached per band).
 
-| Role | Spec |
-|------|------|
-| Font | `system-ui, ui-monospace, monospace` for numbers |
-| Risk numeral | 72–96px, tabular-nums, `--accent` |
-| Panels | `--panel`, 1px `--border`, 10–12px radius |
-| Motion | 150–250ms ease; respect `prefers-reduced-motion` |
+| Group | Tokens |
+|---|---|
+| Surfaces (60%) | `--bg` #100e0c · `--panel` #1a1714 · `--panel-2` #14120f |
+| Structure (30%) | `--text` #ddd4c8 · `--muted` #9a8e80 · `--muted-2` #6e6050 · `--border` #2a2420 · `--border-2` #352e28 |
+| Signal (10%) | `--accent` / `--accent-weak` / `--accent-line`, switched by `html[data-band]` |
+| Band ramps | `--{green,yellow,red,purple}` + `-tint` / `-soft` / `-strong` |
+| Spacing | `--space-1..7` = 4 · 8 · 12 · 16 · 24 · 32 · 40px (8px grid, 4px half-step) |
+| Type sizes | `--fs-2xs..4xl` = 8–22px, `--fs-display` 64px, booth `--fs-5xl..8xl`, `--fs-booth-*` |
+| Shape | `--radius` 3px · `--radius-pill` · `--stroke` 1.5 · hairline = 1px |
+| Motion | `--dur` 200ms · `--dur-enter` 180ms · `--dur-sweep` 400ms · `--dur-flash` 800ms · `--dur-pulse` 1.5s · `--ease` |
 
----
+Contrast is tested, not assumed: `tests/contrast.test.ts` checks body and `--muted` text ≥ 4.5:1, UI/large text ≥ 3:1, and every band accent on the panel and pill text on the accent.
 
-### 3c. Visual language — restrained operator console + hardware twin
+### Type
 
-Benchmark: serious instrumentation software — calm, precise, dense but legible, never decorative. Every pixel carries or frames data.
-- **Surfaces:** near-black `--bg #0a0e14`, panels `#111823`, 1px `--border #1e2a3a` hairlines, a faint 8px panel grid at ≤4% contrast.
-- **Colour:** exactly one live accent — the current band via `html[data-band]`; everything else greyscale. Glow only on actively-signalling elements (band ring, active cable, new alert), disabled under reduced motion.
-- **Type:** `system-ui` for text; `ui-monospace` `tabular-nums` for every number. Labels uppercase 11–12px, 0.08em, muted.
-- **Motion:** 150–250ms ease-out, transform/opacity only, zero layout shift. A band change restyles the whole UI within one frame; one 400ms accent header sweep on escalation and on reconnect.
-- **Hardware twin (hero):** inline-SVG line drawing of the real shelf (architecture.md §3.6). Health LED per board; dead node → grey + `NO HEARTBEAT · Ns` + dashed cable; event → accent dash travels the node's cable to Pi4 (pooled refs, no per-event DOM); tripwire edge → that Pi's case lid swings open red.
+| Role | Font | Use |
+|---|---|---|
+| display | Newsreader 700, `--fs-display` | risk numeral (true tabular figures) |
+| title | Newsreader 400/700 | wordmark, band name, Risk panel title |
+| posture | Newsreader italic 400 | posture line, empty states, lock-screen subhead |
+| body / label | Schibsted Grotesk 400–700 | UI text; uppercase only for panel labels and chips |
+| data | JetBrains Mono 400–700, `tabular-nums slashed-zero` | every number, time, IP, MAC, command |
+
+Fonts are self-hosted subsets in `web/src/assets/fonts/` (113.2 KB woff2 total, same-origin), built by `npm run fonts`, with metric-matched fallbacks so swapping in causes no layout shift.
+
+### Motion
+
+Motion only signals state change: new-row entry (`--dur-enter`), one header sweep on escalation or reconnect, the band ring easing to a new score, LED patterns that mirror the real WS2812B strip, and the tripwire lid. `prefers-reduced-motion` stops all of it (verified: no running animations, LEDs solid).
+
+### Visual language
+
+- **Hierarchy:** the Risk panel is the only hero (accent top border, tint gradient, serif numeral); the other five panels share one quiet treatment.
+- **Severity:** never colour alone — filled shape (circle → triangle → square → diamond) plus bar width; event kinds use a stroked custom SVG icon set (`src/components/Icons.tsx`, no icon library, no emoji).
+- **Hardware twin:** inline-SVG line drawing of the real shelf (architecture.md §3.6). Node state is shape + word (filled / half / hollow ring); dead node → `NO HEARTBEAT · Ns` + dashed cable; tripwire → that Pi's lid swings open red. The lock screen reuses it in an idle state with no live status.
 - **No gimmicks:** no fake terminals, hex rain, world maps or fake metrics — live data or a clearly-marked empty state only.
 
 ## 4. Component Specifications

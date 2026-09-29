@@ -19,7 +19,7 @@ export default function OperatorView() {
       <DegradedBanner />
       <main className="ops-grid">
         <section className="panel ops-scoring">
-          <span className="label">SCORING</span>
+          <span className="label">Risk</span>
           <RiskPanel />
           <History compact />
           <PipelineStrip />
@@ -27,28 +27,28 @@ export default function OperatorView() {
         </section>
 
         <section className="panel ops-console">
-          <span className="label">COMMAND CONSOLE</span>
+          <span className="label">Console</span>
           <CommandConsole />
         </section>
 
         <section className="panel ops-devmap">
-          <span className="label">MY DEVICE MAP</span>
+          <span className="label">Hardware</span>
           <HardwareTwin />
           <NodeTiles compact />
         </section>
 
         <section className="panel ops-events">
-          <span className="label">EVENTS HAPPENING</span>
+          <span className="label">Events</span>
           <EventFeed />
         </section>
 
         <section className="panel ops-controls">
-          <span className="label">QUICK CONTROLS</span>
+          <span className="label">Controls</span>
           <QuickControls />
         </section>
 
         <section className="panel ops-iot">
-          <span className="label">EXTERNAL IoT ARCHITECTURE</span>
+          <span className="label">IoT Topology</span>
           <IoTGraph />
         </section>
       </main>

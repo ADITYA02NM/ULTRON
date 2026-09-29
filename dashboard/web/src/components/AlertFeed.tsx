@@ -5,6 +5,7 @@ import type { AlertD } from "../contracts/ws";
 import { transport } from "../transport/transport";
 import { utcTime } from "../lib/format";
 import { useReducedMotion } from "../hooks/useNow";
+import { cssVar } from "../lib/cssVars";
 
 const AlertCard = memo(function AlertCard({ a, isNew }: { a: AlertD; isNew: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -13,8 +14,8 @@ const AlertCard = memo(function AlertCard({ a, isNew }: { a: AlertD; isNew: bool
     if (!isNew || reduce || !ref.current) return;
     const el = ref.current;
     el.animate(
-      [{ transform: "translateY(-8px)", opacity: 0 }, { transform: "none", opacity: 1 }],
-      { duration: 220, easing: "cubic-bezier(0.22,0.61,0.36,1)" }
+      [{ transform: `translateY(-${cssVar("--enter-offset")})`, opacity: 0 }, { transform: "none", opacity: 1 }],
+      { duration: parseFloat(cssVar("--dur-enter")), easing: cssVar("--ease") }
     );
   }, [isNew, reduce]);
   return (
@@ -44,7 +45,7 @@ function AlertFeedImpl() {
   topId.current = alerts[0]?.id ?? null;
 
   if (!alerts.length) {
-    return <div className="feed"><div className="empty">No alerts — all quiet in the sensor mesh</div></div>;
+    return <div className="feed"><div className="empty">No active alerts — mesh nominal</div></div>;
   }
   return (
     <div className="feed">

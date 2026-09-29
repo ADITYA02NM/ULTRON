@@ -1,5 +1,6 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
+import "./styles/fonts.css";
 import "./styles/global.css";
 import App from "./App";
 import { transport } from "./transport/transport";
@@ -15,8 +16,20 @@ if (q.get("perf")) {
 
 const seedParam = q.get("seed");
 
-if (q.get("perf") || seedParam) {
-  (window as unknown as { __ultron: unknown }).__ultron = { store };
+const w = window as unknown as { __ultron?: unknown };
+if (import.meta.env.DEV && (q.get("perf") || seedParam)) {
+  w.__ultron = { store };
+} else if (q.get("perf")) {
+  // Production ?perf: read-only metrics snapshot, no store handle.
+  w.__ultron = Object.freeze({
+    metrics: () => {
+      const s = store.getState();
+      return Object.freeze({
+        latencyLast: s.latencyLast, latencyP95: s.latencyP95,
+        eventCount: s.eventCount, conn: s.conn,
+      });
+    },
+  });
 }
 
 if (import.meta.env.DEV && seedParam) {

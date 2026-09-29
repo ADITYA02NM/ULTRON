@@ -11,8 +11,9 @@ function DegradedBannerImpl() {
   const show = degraded || conn !== "live";
   if (!show) return null;
   return (
-    <div className="banner">
-      MQTT DEGRADED — last data {ago(scoreTs, now)} ago; values held, not live.
+    <div className="banner" role="status">
+      <b>{degraded ? "MQTT degraded" : conn === "stale" ? "Link stale" : "Link offline"}</b>
+      <span>last data {scoreTs ? `${ago(scoreTs, now)} ago` : "never"} — values held, not live.</span>
     </div>
   );
 }

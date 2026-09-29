@@ -21,14 +21,17 @@ const CABLES: Array<{ node: string; d: string }> = [
   { node: "pi3b", d: "M436,120 C380,120 350,70 350,50" },
 ];
 
+const EMPTY: Record<string, NodeHealth> = {};
+
 function status(h: NodeHealth | undefined, now: number): "up" | "warn" | "down" | "" {
   if (!h) return "";
   const age = (now - h.lastSeen) / 1000;
   return age > 30 ? "down" : age > 15 ? "warn" : "up";
 }
 
-function HardwareTwinImpl() {
-  const nodes = useStore((s) => s.nodes);
+function HardwareTwinImpl({ idle }: { idle?: boolean }) {
+  const liveNodes = useStore((s) => s.nodes);
+  const nodes = idle ? EMPTY : liveNodes;
   const tripSeq = useStore((s) => s.layers.tripSeq);
   const now = useNow(2000);
   const reduce = useReducedMotion();
@@ -39,18 +42,18 @@ function HardwareTwinImpl() {
 
   // Tripwire lid pop (money moment).
   useEffect(() => {
-    if (!tripSeq) return;
+    if (idle || !tripSeq) return;
     ["pi3a", "pi3b"].forEach((id) => {
       const g = lidRefs.current[id];
       if (!g) return;
       g.classList.add("open");
       window.setTimeout(() => g.classList.remove("open"), 1300);
     });
-  }, [tripSeq]);
+  }, [tripSeq, idle]);
 
   // Packet pulses: pooled circles animated along cable paths on each event.
   useEffect(() => {
-    if (reduce) return;
+    if (reduce || idle) return;
     const unsub = store.subscribe(() => {
       const ec = store.getState().eventCount;
       if (ec === lastEvent.current) return;
@@ -73,10 +76,10 @@ function HardwareTwinImpl() {
       }
     });
     return unsub;
-  }, [reduce]);
+  }, [reduce, idle]);
 
   return (
-    <svg className="twin" viewBox="0 0 600 310" role="img" aria-label="Hardware twin">
+    <svg className={"twin" + (idle ? " idle" : "")} viewBox="0 0 600 310" role="img" aria-label="Hardware twin">
       {CABLES.map((c) => {
         const st = status(nodes[c.node], now);
         return <path key={c.node} ref={(el) => (pathRefs.current[c.node] = el)}
@@ -104,7 +107,7 @@ function HardwareTwinImpl() {
             <text className="dev-label" x={d.x + 8} y={d.y + d.h - 14}>{d.label}</text>
             {d.sub && <text className="dev-label" x={d.x + 8} y={d.y + d.h - 4}>{d.sub}</text>}
             {d.node && status(nodes[d.node], now) === "down" && (
-              <text className="dev-label" x={d.x + 8} y={d.y - 8} style={{ fill: "var(--red)" }}>
+              <text className="dev-label alarm" x={d.x + 8} y={d.y - 8}>
                 NO HEARTBEAT · {ago(Math.floor((nodes[d.node]?.lastSeen ?? now) / 1000), now)}
               </text>
             )}
@@ -112,7 +115,7 @@ function HardwareTwinImpl() {
         );
       })}
       {/* C3 OLED window */}
-      <rect x={306} y={262} width={36} height={20} rx="1" fill="#05070b" stroke="var(--border-2)" />
+      <rect x={306} y={262} width={36} height={20} rx="1" fill="var(--oled-bg)" stroke="var(--border-2)" />
     </svg>
   );
 }

@@ -1,6 +1,7 @@
 import { memo, useEffect, useRef } from "react";
 import { store, useStore } from "../store/store";
 import { LED_PATTERN } from "../lib/bands";
+import { cssVar } from "../lib/cssVars";
 import { useReducedMotion } from "../hooks/useNow";
 import type { Band } from "../contracts/ws";
 
@@ -21,9 +22,11 @@ function IndicatorTwinImpl() {
       const c = canvasRef.current; if (!c) return;
       const ctx = c.getContext("2d"); if (!ctx) return;
       const s = store.getState();
+      const oledBg = cssVar("--oled-bg");
+      const oledFg = cssVar("--oled-fg");
       ctx.imageSmoothingEnabled = false;
-      ctx.fillStyle = "#05070b"; ctx.fillRect(0, 0, 128, 64);
-      ctx.fillStyle = "#dfe7ee";
+      ctx.fillStyle = oledBg; ctx.fillRect(0, 0, 128, 64);
+      ctx.fillStyle = oledFg;
       ctx.font = "8px ui-monospace, monospace"; ctx.textBaseline = "top";
       ctx.fillText("ULTRON", 3, 3);
       ctx.fillText(s.band, 128 - s.band.length * 6 - 3, 3);
@@ -35,7 +38,7 @@ function IndicatorTwinImpl() {
       const ids = ["pi4", "pi3a", "pi3b", "esp32"];
       ids.forEach((id, i) => {
         const on = !!s.nodes[id];
-        ctx.strokeStyle = "#dfe7ee";
+        ctx.strokeStyle = oledFg;
         ctx.strokeRect(4 + i * 12, 54, 7, 7);
         if (on) ctx.fillRect(5 + i * 12, 55, 5, 5);
       });

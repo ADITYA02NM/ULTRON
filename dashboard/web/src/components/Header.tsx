@@ -50,7 +50,7 @@ function HeaderImpl() {
       <div className="spacer" />
       <div className="pill">{band}</div>
       <div className="clock">{clock} UTC</div>
-      <div className="tag">MODE: ULTRON</div>
+      <div className="tag">MONITOR</div>
       <button className="session-chip" title="Sign out" onClick={() => { transport.stop(); logout(); }}>SIGN OUT</button>
     </header>
   );

@@ -27,12 +27,12 @@ function PipelineStripImpl() {
           <span className={"stage" + (hot(ts) ? " hot" : "")}>
             <span className="dot" />{name}
           </span>
-          {i < 2 && <span className="arrow">▶</span>}
+          {i < 2 && <span className="arrow">&rarr;</span>}
         </span>
       ))}
       <span className="lat">
-        bus → screen <b>{latLast || "—"}{latLast ? "ms" : ""}{pm}</b>
-        {latP95 ? <> · p95 <b>{latP95}ms</b></> : null}
+        bus &rarr; screen <b className="num">{latLast || "—"}</b>{latLast ? <span className="unit">ms</span> : null}{pm}
+        {latP95 ? <> · p95 <b className="num">{latP95}</b><span className="unit">ms</span></> : null}
       </span>
     </div>
   );

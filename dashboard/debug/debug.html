@@ -7,61 +7,71 @@
 <title>ULTRON — WS Debug Inspector</title>
 <style>
 /* Standalone, read-only WS inspector. No React, no build, no external refs.
-   Publishes nothing to MQTT — sends only {ctl:"ping"} clock-sync frames. */
+   Publishes nothing to MQTT — sends only {ctl:"ping"} clock-sync frames.
+   Palette and type roles mirror web/src/styles/tokens.css (Intelligence Brief). */
 :root{
-  --bg:#0a0e14;--panel:#111823;--panel2:#0d141d;--border:#1e2a3a;--border2:#26364a;
-  --text:#d7e0ea;--muted:#7a8b9f;--green:#22c55e;--yellow:#eab308;--red:#ef4444;--blue:#7fd4ff;
-  --mono:ui-monospace,"Cascadia Mono",Menlo,Consolas,monospace;
+  --bg:#100e0c;--panel:#1a1714;--panel2:#14120f;--border:#2a2420;--border2:#352e28;
+  --text:#ddd4c8;--muted:#9a8e80;--muted2:#6e6050;
+  --green:#3ac870;--yellow:#d4b030;--red:#d04838;--purple:#a060d0;
+  --green-tint:rgba(58,200,112,.08);--red-tint:rgba(208,72,56,.10);
+  --serif:"Newsreader","Times New Roman",serif;
+  --sans:"Schibsted Grotesk",Arial,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,"Cascadia Mono",Consolas,monospace;
+  --radius:3px;
 }
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--text);font-family:var(--mono);font-size:12.5px;padding:12px}
-h1{font-size:14px;margin:0;letter-spacing:2px}
-h1 b{color:var(--green)}
-h2{font-size:10px;letter-spacing:1px;color:var(--muted);text-transform:uppercase;margin:0 0 8px}
-a{color:var(--green)}
-.topbar{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:10px 0 12px}
-.chip{padding:4px 10px;border:1px solid var(--border2);border-radius:4px;font-weight:700;letter-spacing:.06em}
+::selection{background:rgba(160,96,208,.25)}
+:focus-visible{outline:2px solid var(--green);outline-offset:2px}
+body{margin:0;background:var(--bg);color:var(--text);font-family:var(--mono);font-size:12px;line-height:1.5;padding:16px;-webkit-font-smoothing:antialiased}
+h1{font-family:var(--serif);font-weight:400;font-size:16px;margin:0;letter-spacing:.15em}
+h1 b{color:var(--green);font-weight:700}
+h1 span{font-family:var(--sans);font-size:11px;letter-spacing:.1em;color:var(--muted);text-transform:uppercase;margin-left:8px}
+h2{font-family:var(--serif);font-size:13px;font-weight:700;letter-spacing:.04em;color:var(--text);margin:0 0 8px}
+a{color:var(--green);text-decoration:none}a:hover{text-decoration:underline}
+.topbar{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:0 0 16px;padding-bottom:12px;border-bottom:1px solid var(--border)}
+.chip{padding:4px 8px;border:1px solid var(--border2);border-radius:var(--radius);font-family:var(--sans);font-size:10px;font-weight:600;letter-spacing:.1em}
 .chip.live{color:var(--green);border-color:var(--green)}
 .chip.stale{color:var(--yellow);border-color:var(--yellow)}
 .chip.offline{color:var(--red);border-color:var(--red)}
-.ro{color:var(--muted);border:1px dashed var(--border2);padding:4px 8px;border-radius:4px}
-button{font-family:var(--mono);font-size:11px;background:var(--panel);color:var(--text);border:1px solid var(--border2);border-radius:4px;padding:5px 9px;cursor:pointer}
-button:hover{border-color:var(--green)}
-button.active{color:#05070b;background:var(--green);border-color:var(--green)}
-button.off{opacity:.4}
-.grid{display:grid;grid-template-columns:repeat(12,1fr);gap:10px}
-.panel{background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:12px}
+.ro{color:var(--muted);border:1px dashed var(--border2);padding:4px 8px;border-radius:var(--radius);font-size:11px}
+button{font-family:var(--sans);font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;background:var(--panel2);color:var(--text);border:1px solid var(--border2);border-radius:var(--radius);padding:4px 8px;cursor:pointer;box-shadow:inset 0 -2px 0 var(--border2)}
+button:hover{border-color:var(--green);background:var(--green-tint)}
+button.active{color:var(--green);background:var(--green-tint);border-color:var(--green)}
+button.off{opacity:.45}
+.grid{display:grid;grid-template-columns:repeat(12,1fr);gap:8px}
+.panel{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:12px 16px}
 .c3{grid-column:span 3}.c4{grid-column:span 4}.c5{grid-column:span 5}.c6{grid-column:span 6}.c7{grid-column:span 7}.c8{grid-column:span 8}.c12{grid-column:span 12}
 @media(max-width:1000px){[class^="c"]{grid-column:1/-1}}
 table{width:100%;border-collapse:collapse}
-td,th{text-align:left;padding:3px 6px;border-bottom:1px solid var(--border);vertical-align:top}
-th{color:var(--muted);font-size:10px;text-transform:uppercase}
-.kv{display:flex;justify-content:space-between;gap:10px;padding:3px 0;border-bottom:1px solid var(--border)}
-.kv .k{color:var(--muted)}
-.filters{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px}
-#log{max-height:60vh;overflow:auto}
-.row{padding:4px 6px;border-bottom:1px solid var(--border);white-space:pre-wrap;word-break:break-word}
-.row.bad{background:rgba(239,68,68,.14)}
+td,th{text-align:left;padding:4px 8px;border-bottom:1px solid var(--border);vertical-align:top}
+th{color:var(--muted);font-family:var(--sans);font-size:10px;letter-spacing:.08em;text-transform:uppercase;font-weight:500}
+.kv{display:flex;justify-content:space-between;gap:12px;padding:4px 0;border-bottom:1px solid var(--border);font-variant-numeric:tabular-nums slashed-zero}
+.kv .k{color:var(--muted);font-family:var(--sans)}
+.filters{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px}
+#log{max-height:60vh;overflow:auto;scrollbar-width:thin;scrollbar-color:var(--border2) transparent}
+.row{padding:4px 8px;border-bottom:1px solid var(--border);white-space:pre-wrap;word-break:break-word}
+.row.bad{background:var(--red-tint);box-shadow:inset 3px 0 0 var(--red)}
 .badtag{color:var(--red);font-weight:700}
-.ts{color:var(--muted)}
-.t-score{color:#7fd4ff}.t-band{color:#c9a3ff}.t-alert{color:#ff9a9a}.t-health{color:#9affc0}
-.t-lan{color:#ffd77f}.t-tripwire{color:#ff7f7f}.t-history{color:#9fb4ff}.t-toast{color:#c0c0c0}.t-event{color:#c9ffb0}
-.bar{display:inline-block;height:9px;background:var(--green);vertical-align:middle}
+.ts{color:var(--muted2)}
+.t-score{color:var(--green)}.t-band{color:var(--purple)}.t-alert{color:var(--red)}.t-health{color:var(--muted)}
+.t-lan{color:var(--yellow)}.t-tripwire{color:var(--red)}.t-history{color:var(--muted)}.t-toast{color:var(--muted2)}.t-event{color:var(--yellow)}
+.bar{display:inline-block;height:8px;background:var(--green);vertical-align:middle}
 .hist-row{display:flex;align-items:center;gap:8px;padding:2px 0}
-.hist-row .lbl{width:74px;color:var(--muted)}
-.hist-row .cnt{width:38px;text-align:right;color:var(--muted)}
-.big{font-size:20px;font-weight:700}
+.hist-row .lbl{width:76px;color:var(--muted)}
+.hist-row .cnt{width:40px;text-align:right;color:var(--muted)}
+.big{font-family:var(--serif);font-size:24px;font-weight:700;line-height:1}
 .muted{color:var(--muted)}
 .ok{color:var(--green)}.warn{color:var(--yellow)}.err{color:var(--red)}
 .sp{flex:1}
 .mt8{margin-top:8px}
-.mt10{margin-top:10px}
+.mt10{margin-top:12px}
 .mt12{margin-top:12px}
+@media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important}}
 </style>
 </head>
 <body>
 <div class="topbar">
-  <h1>ULT<b>RON</b> · WS DEBUG</h1>
+  <h1>ULT<b>RON</b><span>WS debug</span></h1>
   <span class="chip offline" id="conn">OFFLINE</span>
   <span class="ro">READ-ONLY · publishes nothing (clock-sync only)</span>
   <span class="muted"><b id="fcount">0</b> frames · <b id="errcount">0</b> contract errors</span>
@@ -69,7 +79,7 @@ th{color:var(--muted);font-size:10px;text-transform:uppercase}
   <button id="pause">Pause</button>
   <button id="clear">Clear</button>
   <button id="copy">Copy shown JSON</button>
-  <a href="/">→ operator</a>
+  <a href="/">Operator view →</a>
 </div>
 
 <div class="grid">
@@ -206,7 +216,7 @@ th{color:var(--muted);font-size:10px;text-transform:uppercase}
       ts.textContent=(isFinite(f.ts)? new Date(f.ts*1000).toISOString().slice(11,23):"--")+" ";
       var tag=document.createElement("span"); tag.className="t-"+f.t; tag.textContent="["+f.t+"] ";
       row.appendChild(ts); row.appendChild(tag);
-      if(f.bad.length){ var b=document.createElement("span"); b.className="badtag"; b.textContent="✗ "+f.bad.join("; ")+" "; row.appendChild(b); }
+      if(f.bad.length){ var b=document.createElement("span"); b.className="badtag"; b.textContent="FAIL · "+f.bad.join("; ")+" "; row.appendChild(b); }
       row.appendChild(document.createTextNode(JSON.stringify(f.d)));
       log.appendChild(row);
     }
@@ -258,9 +268,9 @@ th{color:var(--muted);font-size:10px;text-transform:uppercase}
     var cc=$("#contract");
     var bads=frames.filter(function(f){return f.bad.length;}).slice(0,8);
     if(!frames.length){ cc.className="muted"; cc.textContent="No frames yet."; }
-    else if(!bads.length){ cc.className="ok"; cc.textContent="✓ all "+frames.length+" frames conform to the contract."; }
+    else if(!bads.length){ cc.className="ok"; cc.textContent="PASS · all "+frames.length+" frames conform to the contract."; }
     else { cc.className=""; cc.textContent="";
-      var h=document.createElement("div"); h.className="err"; h.textContent="✗ "+errCount+" non-conforming frame(s). Latest:"; cc.appendChild(h);
+      var h=document.createElement("div"); h.className="err"; h.textContent="FAIL · "+errCount+" non-conforming frame(s). Latest:"; cc.appendChild(h);
       bads.forEach(function(f){ var d=document.createElement("div"); d.textContent="["+f.t+"] "+f.bad.join("; ")+"  "+JSON.stringify(f.d).slice(0,80); cc.appendChild(d); });
     }
   }

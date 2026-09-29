@@ -206,8 +206,24 @@ Modes: **client** = runs in browser, no server; **server** = requires authentica
 | `server/main` | routes, /ws, /healthz, static, debug gating | — | §3 | Pi4 |
 | `server/bridge` | MQTT↔WS allowlist, envelope, fan-out, ack publish | MQTT | §4, §5 | Pi4 |
 | `server/db` · `csp` · `clock` · `config` | evidence reads · CSP · ping-pong · env | — | §2, §3 | Pi4 |
-| `debug.html` | 6-panel read-only inspector | `/ws`, `/healthz` | §7 | Pi4 |
+| `debug.html` | 6-panel read-only inspector (standalone; palette mirrors `tokens.css`) | `/ws`, `/healthz` | §7 | Pi4 |
 | `tools/mock_feed` | dev demo publisher (`--script demo`) | — | §9 rehearsal | dev |
+
+### 6.1 Design system files (design-v2, "Intelligence Brief")
+
+| File | Role |
+|---|---|
+| `design/DESIGN.md` | mood, references, type roles, 60-30-10, spacing, motion, icon rules, signature element |
+| `design/D1-AUDIT.md` · `design/D5-QA.md` | the 23-item generic-AI audit and its item-by-item re-check with evidence |
+| `design/before/` · `design/after/` · `design/specimen/` | screenshots (D1 before, D2–D5 after, font specimen) |
+| `web/src/styles/tokens.css` | the only place colours, sizes, spacing and durations are defined |
+| `web/src/styles/fonts.css` · `web/src/assets/fonts/` | generated `@font-face` + metric-matched fallbacks · subset woff2 (113.2 KB) |
+| `web/scripts/build-fonts.py` (`npm run fonts`) | rebuilds the font subsets from the Fontsource devDependencies (needs `fonttools`, `brotli`) |
+| `web/scripts/check-tokens.mjs` (`npm run check:tokens`) | fails on raw hex/rgb/px/ms outside tokens; lists the documented exceptions |
+| `web/src/components/Icons.tsx` | custom SVG event-kind icons + severity shapes |
+| `web/tests/contrast.test.ts` · `web/tests/token-lint.test.ts` | WCAG contrast in all 4 bands · token rule |
+
+**Dev-only routes** (stripped from production builds by `import.meta.env.DEV`): `?design=specimen` shows the font specimen (Schibsted Grotesk vs IBM Plex Sans); `?seed=GREEN|YELLOW|RED|PURPLE` renders the dashboard with static fake data for design review and never opens the WebSocket.
 
 ---
 
@@ -252,6 +268,7 @@ Modes: **client** = runs in browser, no server; **server** = requires authentica
 | **Logout not closing WS** | **closed (CP6)** | `handle_logout` now calls `session_mgr.close_session_sockets(sid_hash)` to close all WebSockets for the revoked session within 1 s (code 4401). Previously, WS connections could outlive a revoked session until the next heartbeat check. |
 | **auth.db WAL mode** | **closed (CP6)** | `auth_db.py` opens with `PRAGMA journal_mode=WAL` for crash resilience and has an explicit `close()` called on shutdown. WAL prevents partial writes to the credential and session tables on unclean process exit. |
 | **Rate limiter counting all attempts** | **closed (CP6)** | `_check_rate` counts every auth request (success and failure) — 5 per 5-minute window with exponential backoff. This is intentional: counting only failures would let an attacker with a valid credential rotate it against rate limits. Audit log records `rate_limited` events. |
+| **`window.__ultron` store exposure** | **closed (D2)** | `?perf` / `?seed` previously put the full client store (including `setAuth`) on `window.__ultron` in every build. It could not reach live data (the WS upgrade is the boundary), but it let anyone flip the UI past the auth gate. Now the store handle is set only under `import.meta.env.DEV`; production `?perf` exposes a frozen, read-only `metrics()` snapshot (latency last/p95, event count, conn). Verified: `dist/` has no `__ultron.store`. `tests/server/test_ws_refusal.py` covers no cookie, forged/expired/revoked session, wrong/missing Origin, unauthenticated ACK and post-logout ACK (9 tests). |
 
 ---
 

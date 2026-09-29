@@ -34,12 +34,12 @@ export const COMMANDS: CommandDef[] = [
 ];
 
 export const QUICK_CMDS = [
-  { label: "ACK ALL", cmd: "/ack all", icon: "✓" },
-  { label: "UNACKED", cmd: "/filter type:unacked", icon: "⚠" },
-  { label: "FOCUS NODE", cmd: "/focus", icon: "◎" },
-  { label: "BOOTH VIEW", cmd: "/view booth", icon: "▣" },
-  { label: "EXPORT CSV", cmd: "/export alerts", icon: "↓" },
-  { label: "LOCK", cmd: "/lock", icon: "🔒" },
+  { label: "ACK ALL", cmd: "/ack all" },
+  { label: "UNACKED", cmd: "/filter type:unacked" },
+  { label: "FOCUS NODE", cmd: "/focus" },
+  { label: "BOOTH VIEW", cmd: "/view booth" },
+  { label: "EXPORT CSV", cmd: "/export alerts" },
+  { label: "LOCK", cmd: "/lock" },
 ];
 
 let _cmdId = 0;
