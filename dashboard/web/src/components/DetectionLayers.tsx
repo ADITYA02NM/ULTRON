@@ -28,7 +28,7 @@ function DetectionLayersImpl() {
   ];
 
   return (
-    <div>
+    <div className="layers">
       {rows.map((r) => (
         <div key={r.k} className={"layer" + (r.lit ? " lit" : "")} ref={r.k === "trip" ? tripRef : undefined}>
           <span className="cube" />

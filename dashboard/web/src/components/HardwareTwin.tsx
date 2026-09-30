@@ -33,6 +33,7 @@ function HardwareTwinImpl({ idle }: { idle?: boolean }) {
   const liveNodes = useStore((s) => s.nodes);
   const nodes = idle ? EMPTY : liveNodes;
   const tripSeq = useStore((s) => s.layers.tripSeq);
+  const focus = useStore((s) => s.focusNode);
   const now = useNow(2000);
   const reduce = useReducedMotion();
   const lidRefs = useRef<Record<string, SVGGElement | null>>({});
@@ -79,7 +80,7 @@ function HardwareTwinImpl({ idle }: { idle?: boolean }) {
   }, [reduce, idle]);
 
   return (
-    <svg className={"twin" + (idle ? " idle" : "")} viewBox="0 0 600 310" role="img" aria-label="Hardware twin">
+    <svg className={"twin" + (focus ? " has-focus" : "") + (idle ? " idle" : "")} viewBox="0 0 600 310" role="img" aria-label="Hardware twin">
       {CABLES.map((c) => {
         const st = status(nodes[c.node], now);
         return <path key={c.node} ref={(el) => (pathRefs.current[c.node] = el)}
@@ -96,7 +97,7 @@ function HardwareTwinImpl({ idle }: { idle?: boolean }) {
       {DEVS.map((d) => {
         const st = d.node ? status(nodes[d.node], now) : "";
         return (
-          <g key={d.id}>
+          <g key={d.id} className={`dev${focus && focus === d.id ? " focused" : ""}`}>
             <rect className="dev-body" x={d.x} y={d.y} width={d.w} height={d.h} rx="3" />
             {(d.id === "pi3a" || d.id === "pi3b") && (
               <g ref={(el) => (lidRefs.current[d.id] = el)} className="lid">

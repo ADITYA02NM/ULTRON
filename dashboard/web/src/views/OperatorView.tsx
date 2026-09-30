@@ -6,11 +6,14 @@ import { PipelineStrip } from "../components/PipelineStrip";
 import { IndicatorTwin } from "../components/IndicatorTwin";
 import { NodeTiles } from "../components/NodeTiles";
 import { History } from "../components/History";
+import { AlertFeed } from "../components/AlertFeed";
 import { EventFeed } from "../components/EventFeed";
+import { DetectionLayers } from "../components/DetectionLayers";
 import { CommandConsole } from "../components/CommandConsole";
 import { QuickControls } from "../components/QuickControls";
 import { IoTGraph } from "../components/IoTGraph";
 import { StatusStrip } from "../components/StatusStrip";
+import { Footer } from "../components/Footer";
 
 export default function OperatorView() {
   return (
@@ -35,10 +38,12 @@ export default function OperatorView() {
           <span className="label">Hardware</span>
           <HardwareTwin />
           <NodeTiles compact />
+          <DetectionLayers />
         </section>
 
         <section className="panel ops-events">
-          <span className="label">Events</span>
+          <span className="label">Alerts &amp; events</span>
+          <AlertFeed />
           <EventFeed />
         </section>
 
@@ -53,6 +58,7 @@ export default function OperatorView() {
         </section>
       </main>
       <StatusStrip />
+      <Footer />
     </div>
   );
 }

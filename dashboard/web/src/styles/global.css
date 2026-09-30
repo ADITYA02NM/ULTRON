@@ -99,6 +99,16 @@ header {
 }
 .session-chip { font-size: var(--fs-base); padding: var(--space-1) var(--space-2); border: 1px solid var(--border-2); border-radius: var(--radius); cursor: pointer; }
 
+/* simulate / stop toggle */
+.sim-btn {
+  font-size: var(--fs-sm); font-weight: 700; letter-spacing: .08em; cursor: pointer;
+  padding: var(--space-1) var(--space-3); border-radius: var(--radius);
+  color: var(--accent); background: var(--accent-weak); border: 1px solid var(--accent-line);
+  transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+.sim-btn:hover { border-color: var(--accent); }
+.sim-btn.running { color: var(--bg); background: var(--red); border-color: var(--red); }
+
 /* header escalation sweep */
 .sweep::after {
   content: ""; position: absolute; inset: 0; pointer-events: none;
@@ -108,6 +118,35 @@ header {
 @keyframes sweep { to { transform: translateX(100%); } }
 
 /* ---- degraded banner ---- */
+
+/* ---- toast notices ---- */
+.toast {
+  position: fixed; top: calc(var(--space-2) + var(--row-h)); right: var(--space-4); z-index: 40;
+  display: flex; align-items: center; gap: var(--space-2);
+  padding: var(--space-2) var(--space-3); min-width: 30ch; max-width: 60ch;
+  background: var(--panel-2); border: 1px solid var(--border-2); border-radius: var(--radius);
+  box-shadow: 0 var(--space-2) var(--space-5) var(--overlay-bg);
+  animation: toast-in var(--dur-enter) var(--ease) 1;
+}
+.toast-bar { width: var(--bar-w-2); align-self: stretch; border-radius: 1px; background: var(--accent); flex-shrink: 0; }
+.toast.sev-green .toast-bar, .toast.sev-info .toast-bar { background: var(--green); }
+.toast.sev-yellow .toast-bar, .toast.sev-warn .toast-bar { background: var(--yellow); }
+.toast.sev-red .toast-bar, .toast.sev-critical .toast-bar { background: var(--red); }
+.toast.sev-purple .toast-bar { background: var(--purple); }
+.toast.sev-yellow, .toast.sev-warn { border-color: var(--yellow); }
+.toast.sev-red, .toast.sev-critical { border-color: var(--red); }
+.toast.sev-purple { border-color: var(--purple); }
+.toast-msg { font-size: var(--fs-base); color: var(--text); }
+.toast-sev {
+  font-family: var(--mono); font-size: var(--fs-xs); text-transform: uppercase;
+  letter-spacing: .08em; color: var(--muted);
+}
+.toast-close {
+  margin-left: auto; background: transparent; border: 0; cursor: pointer;
+  color: var(--muted); font-size: var(--fs-lg); line-height: 1; padding: 0 var(--space-1);
+}
+.toast-close:hover { color: var(--text); }
+@keyframes toast-in { from { opacity: 0; transform: translateY(calc(0px - var(--enter-offset))); } }
 
 /* ================================================================
    OPS LAYOUT
@@ -179,6 +218,9 @@ header {
 
 /* ---- hardware twin ---- */
 .twin { width: 100%; height: auto; display: block; }
+.twin .dev { transition: opacity var(--dur) var(--ease); }
+.twin.has-focus .dev:not(.focused) { opacity: .4; }
+.twin.has-focus .dev.focused .dev-body { stroke: var(--accent); stroke-width: 2; }
 .twin .dev-label { font-family: var(--mono); font-size: var(--fs-2xs); fill: var(--muted); }
 .twin .cable.dead { stroke-dasharray: 4 4; }
 .twin .pulse { stroke: var(--accent); stroke-width: 2; fill: none;
@@ -202,7 +244,7 @@ header {
 .lat { margin-left: auto; font-family: var(--mono); font-size: var(--fs-md); color: var(--muted); font-variant-numeric: tabular-nums; }
 .lat b { color: var(--text); }
 
-/* ---- alert feed (booth view) ---- */
+/* ---- alert feed ---- */
 .feed { display: flex; flex-direction: column; gap: var(--space-2); max-height: var(--feed-max-h); overflow: auto; }
 .alert {
   display: flex; gap: var(--space-3); padding: var(--space-2) var(--space-3);
@@ -393,11 +435,11 @@ canvas.spark-compact { height: var(--spark-h-compact); }
 .stat .k { margin-top: var(--space-1); }
 .decay { margin-top: var(--space-3); text-align: center; font-family: var(--mono); font-size: var(--fs-base); color: var(--muted); }
 
-/* ---- old 12-col layout (booth view compat) ---- */
+/* ---- old 12-col layout (compat) ---- */
 .col-3 { grid-column: span 3; } .col-4 { grid-column: span 4; } .col-5 { grid-column: span 5; }
 .col-6 { grid-column: span 6; } .col-7 { grid-column: span 7; } .col-8 { grid-column: span 8; } .col-12 { grid-column: span 12; }
 
-/* ---- footer (booth view) ---- */
+/* ---- footer ---- */
 footer {
   max-width: var(--footer-max-w); margin: var(--space-1) auto var(--space-6); width: 100%;
   padding: var(--space-3) var(--gap);
@@ -666,6 +708,8 @@ kbd {
   .ops-grid > .panel { display: flex; flex-direction: column; }
   .ops-grid > .panel > .ev-feed, .ops-grid > .panel > .cmd-console,
   .ops-grid > .panel > .qc, .ops-grid > .panel > .iot-wrap, .ops-grid > .panel > .iot-empty { flex: 1; min-height: 0; height: auto; }
+  .ops-grid > .panel > .feed { flex: 0 1 auto; min-height: 0; max-height: 45%; }
+  .ops-grid > .panel > .layers { flex: 0 0 auto; }
 }
 
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }

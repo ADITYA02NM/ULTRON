@@ -76,18 +76,15 @@
   --fs-3xl: 20px;
   --fs-4xl: 22px;
   --fs-display: 64px;
-  /* booth view (read from 3 m) */
+  /* large numerics (hero / sparkline labels) */
   --fs-5xl: 26px;
   --fs-6xl: 32px;
   --fs-7xl: 40px;
   --fs-8xl: 44px;
-  --fs-booth-display: 180px;
   --fs-hero: 96px;
-  --fs-booth-band: 64px;
 
   /* Component dimensions */
   --header-h: 38px;
-  --booth-header-h: 72px;
   --row-h: 28px;
   --node-badge-w: 28px;
   --time-col-w: 60px;
@@ -102,8 +99,6 @@
   --measure: 34ch;
   --dialog-w: 480px;
   --footer-max-w: 1400px;
-  --booth-max-w: 1860px;
-  --booth-ring-size: 200px;
   --spark-h: 150px;
   --spark-h-compact: 80px;
   --hero-tint-h: 80px;

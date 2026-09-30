@@ -3,6 +3,19 @@ import { store } from "../store/store";
 import { bandForScore } from "../lib/bands";
 import { cssVar } from "../lib/cssVars";
 
+export type HistoryRange = "1h" | "6h" | "24h";
+
+/** Pure range filter over [tsSec, value] points. Exported for tests. */
+export function filterHistory(
+  points: Array<[number, number]>,
+  range: HistoryRange,
+  nowMs: number,
+): Array<[number, number]> {
+  const spanSec = range === "1h" ? 3600 : range === "6h" ? 21600 : 86400;
+  const cutoff = nowMs / 1000 - spanSec;
+  return points.filter(([ts]) => ts >= cutoff);
+}
+
 function HistoryImpl({ compact }: { compact?: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const noteRef = useRef<HTMLDivElement>(null);
@@ -10,7 +23,8 @@ function HistoryImpl({ compact }: { compact?: boolean }) {
   useEffect(() => {
     const draw = () => {
       const c = canvasRef.current; if (!c) return;
-      const hist = store.getState().history;
+      const s = store.getState();
+      const hist = filterHistory(s.history, s.historyRange, Date.now());
       const dpr = window.devicePixelRatio || 1;
       const h0 = parseFloat(cssVar(compact ? "--spark-h-compact" : "--spark-h"));
       const w = (c.width = Math.floor(c.clientWidth * dpr));

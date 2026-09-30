@@ -52,8 +52,25 @@ function EventFeedImpl() {
     if (filter === "all") return events;
     if (filter === "unacked") return events.filter((e) => e.alertId && !e.ack);
     if (filter === "alerts") return events.filter((e) => e.kind === "alert");
+    // Prefix syntax from /filter: type:x | sev:x | src:x
+    if (filter.startsWith("type:")) {
+      const kind = filter.slice(5);
+      if (kind === "unacked") return events.filter((e) => e.alertId && !e.ack);
+      if (kind === "alerts") return events.filter((e) => e.kind === "alert");
+      return events.filter((e) => e.kind === kind);
+    }
+    if (filter.startsWith("sev:")) {
+      const sev = filter.slice(4);
+      return events.filter((e) => e.sev === sev);
+    }
+    if (filter.startsWith("src:")) {
+      const node = filter.slice(4);
+      return events.filter((e) => e.node === node);
+    }
     return events.filter((e) => e.kind === filter);
   }, [events, filter]);
+
+  const chipActive = (f: string) => filter === f || filter === `type:${f}`;
 
   const shown = filtered().slice(0, 200);
   const isNewTop = shown[0] ? shown[0].id !== topId.current : false;
@@ -64,7 +81,7 @@ function EventFeedImpl() {
       <div className="ev-feed">
         <div className="ev-filters">
           {FILTERS.map((f) => (
-            <button key={f} className={`ev-chip${filter === f ? " active" : ""}`}
+            <button key={f} className={`ev-chip${chipActive(f) ? " active" : ""}`}
               onClick={() => { store.setEventFilter(f); }}>
               {f}
             </button>
@@ -79,7 +96,7 @@ function EventFeedImpl() {
     <div className="ev-feed">
       <div className="ev-filters">
         {FILTERS.map((f) => (
-          <button key={f} className={`ev-chip${filter === f ? " active" : ""}`}
+          <button key={f} className={`ev-chip${chipActive(f) ? " active" : ""}`}
             onClick={() => { store.setEventFilter(f); }}>
             {f}
           </button>

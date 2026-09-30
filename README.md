@@ -224,7 +224,7 @@ Matches [`architecture.md`](architecture.md) §3.6. Full tables there.
 
 ## 6. Premium dashboard (the showpiece)
 
-> **No compromise.** **React + TypeScript (Vite)**, built to static and served air-gapped from Pi4 at **`https://ultron.lan`** (:443, TLS with offline local CA; WebAuthn passkey lock). React + ReactDOM only; hand-built SVG/canvas; zero CDNs/web fonts. A restrained operator console + a hardware-twin hero, plus a booth view (`?view=booth`) and a standalone read-only `debug.html`. Event → pixel **&lt;100ms** (measured bus→screen p95 ≈ 36ms). Full reference: [`use.md`](use.md).
+> **No compromise.** **React + TypeScript (Vite)**, built to static and served air-gapped from Pi4 at **`https://ultron.lan`** (:443, TLS with offline local CA; WebAuthn passkey lock). React + ReactDOM only; hand-built SVG/canvas; zero CDNs/web fonts. A restrained operator console + a hardware-twin hero, plus a one-click **SIMULATE** tour (client-side demo feed that walks every live panel through GREEN→PURPLE and back) and a standalone read-only `debug.html`. Event → pixel **&lt;100ms** (measured bus→screen p95 ≈ 36ms). Full reference: [`use.md`](use.md).
 
 | Region | What you see |
 |--------|----------------|

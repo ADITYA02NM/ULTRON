@@ -3,6 +3,7 @@ import { bandForScore, isWorse, bandRank } from "../src/lib/bands";
 import { LatencyWindow, ClockSync } from "../src/lib/latency";
 import { isEnvelope, isPong } from "../src/contracts/ws";
 import { Store } from "../src/store/store";
+import { filterHistory } from "../src/components/History";
 import type { Envelope } from "../src/contracts/ws";
 
 const env = (t: string, d: unknown, ts = Date.now() / 1000): Envelope =>
@@ -93,5 +94,32 @@ describe("store.applyBatch", () => {
     s.applyBatch([env("event", { topic: "ultron/wifi/rogue", node: "pi3a", kind: "wifi", sev: "yellow", summary: "rogue AP" })]);
     expect(s.getState().layers.idsCount).toBe(1);
     expect(s.getState().layers.wifiRogue).toBe(true);
+  });
+});
+
+describe("filterHistory", () => {
+  const nowMs = 1_000_000_000_000; // fixed epoch ms
+  it("drops points older than the range span", () => {
+    const points: Array<[number, number]> = [
+      [nowMs / 1000 - 7200, 10], // 2h ago -> outside 1h
+      [nowMs / 1000 - 1800, 20], // 30m ago -> inside 1h
+      [nowMs / 1000, 30],        // now -> inside 1h
+    ];
+    const out = filterHistory(points, "1h", nowMs);
+    expect(out.length).toBe(2);
+    expect(out.every(([, v]) => v !== 10)).toBe(true);
+  });
+  it("handles an empty series", () => {
+    expect(filterHistory([], "24h", nowMs)).toEqual([]);
+  });
+  it("24h keeps a full day of recent points", () => {
+    const points: Array<[number, number]> = [
+      [nowMs / 1000 - 86000, 1], // just under 24h ago
+      [nowMs / 1000 - 100000, 2], // >24h ago -> dropped
+      [nowMs / 1000 - 60, 3],
+    ];
+    const out = filterHistory(points, "24h", nowMs);
+    expect(out.length).toBe(2);
+    expect(out.map(([, v]) => v).sort()).toEqual([1, 3]);
   });
 });

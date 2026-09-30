@@ -77,6 +77,9 @@ export interface State {
   focusNode: string | null;
   eventFilter: string;
   showDevices: boolean;
+  simRunning: boolean;
+  selectedDevice: string | null;
+  historyRange: "1h" | "6h" | "24h";
 }
 
 const MAX_ALERTS = 200;
@@ -93,6 +96,7 @@ function initial(): State {
     pipeline: { detect: 0, govern: 0, alert: 0 },
     latencyLast: 0, latencyP95: 0, clockReady: false, clockUncertaintyMs: Infinity, lastToast: null,
     events: [], devices: {}, commandHistory: [], muteUntil: 0, focusNode: null, eventFilter: "all", showDevices: false,
+    simRunning: false, selectedDevice: null, historyRange: "24h",
   };
 }
 
@@ -171,6 +175,30 @@ export class Store {
   setShowDevices(v: boolean): void {
     if (this.state.showDevices === v) return;
     this.state = { ...this.state, showDevices: v };
+    this.emit();
+  }
+
+  setSimRunning(v: boolean): void {
+    if (this.state.simRunning === v) return;
+    this.state = { ...this.state, simRunning: v };
+    this.emit();
+  }
+
+  setSelectedDevice(mac: string | null): void {
+    if (this.state.selectedDevice === mac) return;
+    this.state = { ...this.state, selectedDevice: mac };
+    this.emit();
+  }
+
+  setHistoryRange(r: "1h" | "6h" | "24h"): void {
+    if (this.state.historyRange === r) return;
+    this.state = { ...this.state, historyRange: r };
+    this.emit();
+  }
+
+  clearToast(): void {
+    if (!this.state.lastToast) return;
+    this.state = { ...this.state, lastToast: null };
     this.emit();
   }
 

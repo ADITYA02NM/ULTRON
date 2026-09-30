@@ -77,7 +77,7 @@ export function seedForDesign(band: Band): void {
     { id: "cmd-s-3", ts: Date.now() - 300000, command: "/filter type:suricata",
       result: "Filter set: type:suricata", ok: true },
     { id: "cmd-s-4", ts: Date.now() - 600000, command: "/ack all",
-      result: "Requires authentication — not available yet", ok: false },
+      result: "ACK sent for 2 alerts", ok: true },
   ];
 
   store.seedDev({

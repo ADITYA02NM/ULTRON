@@ -2,6 +2,7 @@ import { store } from "../store/store";
 import type { CommandEntry } from "../store/store";
 import { transport } from "../transport/transport";
 import { logout } from "./auth";
+import { simulation } from "./simulation";
 
 export interface CommandDef {
   name: string;
@@ -18,7 +19,7 @@ export const COMMANDS: CommandDef[] = [
   { name: "focus", args: "<pi4|pi3a|pi3b|c3|wroom>", desc: "Highlight a node in the device map" },
   { name: "device", args: "<ip|mac>", desc: "Open a device card in the IoT graph" },
   { name: "history", args: "<1h|6h|24h>", desc: "Change the chart range" },
-  { name: "view", args: "<operator|booth>", desc: "Switch view" },
+  { name: "simulate", args: "[stop]", desc: "Run the client-side demo simulation" },
   { name: "latency", desc: "Print latency stats" },
   { name: "health", desc: "Print per-node heartbeat ages" },
   { name: "mute", args: "<minutes>", desc: "Mute toasts" },
@@ -36,8 +37,8 @@ export const COMMANDS: CommandDef[] = [
 export const QUICK_CMDS = [
   { label: "ACK ALL", cmd: "/ack all" },
   { label: "UNACKED", cmd: "/filter type:unacked" },
-  { label: "FOCUS NODE", cmd: "/focus" },
-  { label: "BOOTH VIEW", cmd: "/view booth" },
+  { label: "FOCUS NODE", cmd: "/focus pi3a" },
+  { label: "SIMULATE", cmd: "/simulate" },
   { label: "EXPORT CSV", cmd: "/export alerts" },
   { label: "LOCK", cmd: "/lock" },
 ];
@@ -144,13 +145,17 @@ export function execCommand(raw: string): void {
       }
       break;
     }
-    case "view": {
-      if (args === "booth") {
-        window.location.search = "?view=booth";
+    case "simulate": {
+      if (args === "stop") {
+        simulation.stop();
+        store.addCommand(entry(trimmed, "Simulation stopped", true));
+      } else if (store.getState().simRunning) {
+        simulation.stop();
+        store.addCommand(entry(trimmed, "Simulation stopped", true));
       } else {
-        window.location.search = "";
+        simulation.start();
+        store.addCommand(entry(trimmed, "Simulation running — client-side demo feed", true));
       }
-      store.addCommand(entry(trimmed, `Switching to ${args || "operator"} view`, true));
       break;
     }
     case "latency": {
@@ -174,7 +179,16 @@ export function execCommand(raw: string): void {
       break;
     }
     case "history": {
-      store.addCommand(entry(trimmed, `Chart range set to ${args || "24h"}`, true));
+      const range = (args || "24h").toLowerCase();
+      if (range !== "1h" && range !== "6h" && range !== "24h") {
+        store.addCommand(entry(trimmed, `Unknown range: ${args}. Valid: 1h, 6h, 24h`, false));
+        break;
+      }
+      store.setHistoryRange(range);
+      const now = Date.now() / 1000;
+      const spanSec = range === "1h" ? 3600 : range === "6h" ? 21600 : 86400;
+      const visible = store.getState().history.filter(([ts]) => ts >= now - spanSec).length;
+      store.addCommand(entry(trimmed, `Chart range: ${range} · ${visible} samples visible`, true));
       break;
     }
     case "mute": {
@@ -199,7 +213,28 @@ export function execCommand(raw: string): void {
       break;
     }
     case "device": {
-      store.addCommand(entry(trimmed, `Opening device card for ${args}`, true));
+      const q = (args || "").toLowerCase();
+      if (!q) {
+        store.addCommand(entry(trimmed, "Usage: /device <ip|mac>", false));
+        break;
+      }
+      const devices = store.getState().devices;
+      const macs = Object.keys(devices);
+      if (!macs.length) {
+        store.addCommand(entry(trimmed, "No devices observed yet", false));
+        break;
+      }
+      const match = macs.find((m) =>
+        m.toLowerCase() === q ||
+        (devices[m]?.ip ?? "").toLowerCase() === q
+      );
+      if (!match) {
+        store.addCommand(entry(trimmed, `No device matches ${args} — try /devices or click a node`, false));
+      } else {
+        store.setSelectedDevice(match);
+        const dev = devices[match];
+        store.addCommand(entry(trimmed, `Opened device card: ${dev?.vendor || match}`, true));
+      }
       break;
     }
     default:

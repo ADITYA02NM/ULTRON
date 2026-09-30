@@ -4,6 +4,7 @@ import { useStore } from "../store/store";
 import { utcClock } from "../lib/format";
 import { logout } from "../lib/auth";
 import { transport } from "../transport/transport";
+import { simulation } from "../lib/simulation";
 
 const LABEL: Record<string, string> = { live: "LIVE", stale: "STALE", offline: "OFFLINE" };
 
@@ -12,6 +13,7 @@ function HeaderImpl() {
   const conn = useStore((s) => s.conn);
   const band = useStore((s) => s.band);
   const bump = useStore((s) => s.bandBump);
+  const simRunning = useStore((s) => s.simRunning);
   const [clock, setClock] = useState(utcClock());
   const headRef = useRef<HTMLElement>(null);
 
@@ -51,6 +53,13 @@ function HeaderImpl() {
       <div className="pill">{band}</div>
       <div className="clock">{clock} UTC</div>
       <div className="tag">MONITOR</div>
+      <button
+        className={"sim-btn" + (simRunning ? " running" : "")}
+        title={simRunning ? "Stop the demo simulation" : "Run the client-side demo simulation"}
+        onClick={() => simulation.toggle()}
+      >
+        {simRunning ? "■ STOP" : "▶ SIMULATE"}
+      </button>
       <button className="session-chip" title="Sign out" onClick={() => { transport.stop(); logout(); }}>SIGN OUT</button>
     </header>
   );

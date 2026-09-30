@@ -1,5 +1,5 @@
-import { memo, useCallback, useMemo, useState } from "react";
-import { useStore } from "../store/store";
+import { memo, useCallback, useMemo } from "react";
+import { store, useStore } from "../store/store";
 import type { LanDevice, UEvent } from "../store/store";
 import { useNow, useReducedMotion } from "../hooks/useNow";
 import { utcTime } from "../lib/format";
@@ -50,7 +50,7 @@ function IoTGraphImpl() {
   const reduce = useReducedMotion();
   const now = useNow(2000);
   const nowSec = Math.floor(now / 1000);
-  const [selectedMac, setSelectedMac] = useState<string | null>(null);
+  const selectedMac = useStore((s) => s.selectedDevice);
 
   const devices = useMemo(() => Object.values(devicesMap), [devicesMap]);
   const positions = useMemo(() => layoutDevices(devices), [devices]);
@@ -74,7 +74,7 @@ function IoTGraphImpl() {
   }, [selectedDev, recentEvents]);
 
   const onClickDevice = useCallback((mac: string) => {
-    setSelectedMac((prev) => prev === mac ? null : mac);
+    store.setSelectedDevice(store.getState().selectedDevice === mac ? null : mac);
   }, []);
 
   if (!devices.length) {
@@ -145,7 +145,7 @@ function IoTGraphImpl() {
         <div className="iot-detail">
           <div className="iot-detail-hd">
             <span className="iot-detail-vendor">{selectedDev.vendor || "Unknown"}</span>
-            <button className="iot-detail-close" aria-label="Close device details" onClick={() => setSelectedMac(null)}>×</button>
+            <button className="iot-detail-close" aria-label="Close device details" onClick={() => store.setSelectedDevice(null)}>×</button>
           </div>
           <div className="iot-detail-row"><span className="k">IP</span><span>{selectedDev.ip || "—"}</span></div>
           <div className="iot-detail-row"><span className="k">MAC</span><span className="num">{selectedDev.mac}</span></div>

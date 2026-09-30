@@ -20,8 +20,8 @@ python -m server.main                                  # serves dist + /ws on :8
 
 # Open
 #   operator : http://<host>:8080/
-#   booth TV : http://<host>:8080/?view=booth
 #   debug    : http://<host>:8080/debug.html      (only if ULTRON_DEBUG=1 or mgmt subnet+auth)
+#   (header SIMULATE button runs the client-side demo — no broker needed)
 
 # Dev demo feed (needs a broker; never run in prod)
 python tools/mock_feed.py --host 127.0.0.1 --port 1883 --script demo
@@ -53,7 +53,7 @@ sudo systemctl stop sentinel-dashboard                                          
 | GET | `/debug.html` | `ULTRON_DEBUG=1`, **or** client in `ULTRON_MGMT_SUBNET` + HTTP Basic auth; else **404** | standalone debug page (hashed CSP) | `no-store` | operator |
 | GET | `/healthz` | open | `{ok, mqtt_connected, db_readable, uptime_s, version, ws_clients}` | `no-store` | systemd, debug page |
 | GET | `/favicon.ico` | open | `dist/favicon.ico` or `204` | — | browser |
-| WS  | `/ws` | **session cookie + Origin** | data stream + ACK in + clock-sync | — | operator, booth, debug |
+| WS  | `/ws` | **session cookie + Origin** | data stream + ACK in + clock-sync | — | operator, debug |
 | POST | `/auth/setup` | enrollment token | begin first-credential registration | — | CLI / setup |
 | POST | `/auth/setup/complete` | ceremony cookie | finish first registration + session | — | CLI / setup |
 | POST | `/auth/login/begin` | open | begin authentication ceremony | — | browser |
@@ -72,7 +72,7 @@ Example `/healthz`:
 ```json
 {"ok":true,"mqtt_connected":true,"db_readable":false,"uptime_s":1.2,"version":"0.4.0-phase1","ws_clients":1}
 ```
-Routes beyond §3's allowed set are justified: `/favicon.ico` (browser default request → 204) and the SPA fallback (`?view=booth` is a query on `/`, but the fallback keeps deep links working).
+Routes beyond §3's allowed set are justified: `/favicon.ico` (browser default request → 204) and the SPA fallback (keeps deep links such as `?design` or `?t=<enroll>` working).
 
 **CSP.** App pages: `default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self' ws: wss:; img-src 'self' data:; base-uri 'self'; frame-ancestors 'none'` (the built `index.html` has no inline script/style). `debug.html`: same, but its one inline `<script>` and `<style>` are `sha256`-pinned at startup by `server/csp.py`.
 
@@ -166,7 +166,7 @@ The dashboard **never** writes `ultron/risk/#` (that is Pi4's `sentinel-risk`), 
 | 4 | `/focus` | `<pi4\|pi3a\|pi3b\|c3\|wroom>` | client | Highlight a node in the device map |
 | 5 | `/device` | `<ip\|mac>` | client | Open a device card in the IoT graph |
 | 6 | `/history` | `<1h\|6h\|24h>` | client | Change the chart range |
-| 7 | `/view` | `<operator\|booth>` | client | Switch view |
+| 7 | `/simulate` | `[stop]` | client | Run/stop the client-side demo simulation |
 | 8 | `/latency` | — | client | Print latency stats |
 | 9 | `/health` | — | client | Print per-node heartbeat ages |
 | 10 | `/mute` | `<minutes>` | client | Mute toasts |
@@ -182,7 +182,7 @@ The dashboard **never** writes `ultron/risk/#` (that is Pi4's `sentinel-risk`), 
 
 Modes: **client** = runs in browser, no server; **server** = requires authenticated WS session (rejects with "sign in first" if unauthenticated); **Phase 2 (disabled)** = response action, rejected with "Phase 2" message, chip disabled in UI. The `COMMANDS` array has exactly **19** entries (`lib/commands.ts`).
 
-**Quick Controls** (6 buttons): ACK ALL, UNACKED, FOCUS NODE, BOOTH VIEW, EXPORT CSV, LOCK.
+**Quick Controls** (6 buttons): ACK ALL, UNACKED, FOCUS NODE (`/focus pi3a`), SIMULATE, EXPORT CSV, LOCK.
 
 ---
 
@@ -200,9 +200,11 @@ Modes: **client** = runs in browser, no server; **server** = requires authentica
 | `IndicatorTwin` | 128×64 OLED canvas + 8 LEDs (band pattern) | score/band/nodes | §4.3, ESP32-C3 mirror | Pi4/ESP |
 | `NodeTiles` | 4 tiles, state dot, uptime, service pills | health | §4.4 | all |
 | `History` | 24h step ribbon, grid 30/60/85 | history/score | §4.7 | Pi4 |
-| `StatsStrip` | events/open/ack%/uptime/new-devices + decay note | derived | §4.8 | Pi4 |
+| `StatusStrip` | events/open/ack%/uptime/new-devices + decay note + MQTT + evidence path (§4.8 stats merged in) | derived | §4.8 | Pi4 |
 | `Header`/`DegradedBanner` | LIVE/STALE/OFFLINE, band pill, clock; degraded banner | conn/band | §4.1, 6.6 | Pi4 |
-| `BoothView` | 1920×1080 TV view (lazy) | same store | §6.7 | Pi4 |
+| `Simulation` | paced client-side demo: score/band/health/lan/tripwire/event/alert/toast + console commands (header **SIMULATE** toggle) | reads+writes store | §9 demo | dev |
+| `Toast` | transient notices, 6s auto-dismiss, honours `/mute` | toast/muteUntil | §4.1 | Pi4 |
+| `AlertFeed` · `DetectionLayers` · `Footer` | rehomed into operator grid (alerts&events panel · node panel · footer) | alerts/layers | §4.5, §4.6, §4.9 | Pi4 |
 | `server/main` | routes, /ws, /healthz, static, debug gating | — | §3 | Pi4 |
 | `server/bridge` | MQTT↔WS allowlist, envelope, fan-out, ack publish | MQTT | §4, §5 | Pi4 |
 | `server/db` · `csp` · `clock` · `config` | evidence reads · CSP · ping-pong · env | — | §2, §3 | Pi4 |

@@ -2,7 +2,7 @@
 
 > **Non-negotiable:** The dashboard is the face of Black Hat Phase 1 **alert management**. *Top notch, no compromise.* Zero dependencies. One file. &lt;100ms. Operator-grade.
 
-**Stack:** operator UI is a **React + TypeScript app built with Vite** (multi-file, `dashboard/web/`). Node/npm/Vite are used **only on the dev machine at build time**; Pi4 serves the built static output in `dist/` and fetches nothing at runtime (no CDN, no web fonts — everything same-origin/air-gapped). Runtime deps are React + ReactDOM only; charts/gauges/the hardware twin are hand-built SVG/canvas. Server = **Python (aiohttp)** with `webauthn==3.0.1` for passkey auth. A single standalone `debug/debug.html` (vanilla JS) is the read-only inspector. Served by Pi4 on **`https://ultron.lan`** (:443, TLS with offline local CA); real-time via WebSocket bridged from Mosquitto. There is also a **booth view** (`?view=booth`) for a 1920×1080 TV — a view, not a mode. Full reference: [`use.md`](use.md).
+**Stack:** operator UI is a **React + TypeScript app built with Vite** (multi-file, `dashboard/web/`). Node/npm/Vite are used **only on the dev machine at build time**; Pi4 serves the built static output in `dist/` and fetches nothing at runtime (no CDN, no web fonts — everything same-origin/air-gapped). Runtime deps are React + ReactDOM only; charts/gauges/the hardware twin are hand-built SVG/canvas. Server = **Python (aiohttp)** with `webauthn==3.0.1` for passkey auth. A single standalone `debug/debug.html` (vanilla JS) is the read-only inspector. Served by Pi4 on **`https://ultron.lan`** (:443, TLS with offline local CA); real-time via WebSocket bridged from Mosquitto. There is also a one-click **SIMULATE** button (header) that runs a client-side demo of every live feature — score/band sweep, LAN joins, IDS/WiFi/tripwire events, alerts + ACK, node silence/recovery, toasts — with no broker required. Full reference: [`use.md`](use.md).
 
 ---
 
@@ -57,7 +57,7 @@ All values live in `web/src/styles/tokens.css` and nowhere else (enforced by `np
 | Signal (10%) | `--accent` / `--accent-weak` / `--accent-line`, switched by `html[data-band]` |
 | Band ramps | `--{green,yellow,red,purple}` + `-tint` / `-soft` / `-strong` |
 | Spacing | `--space-1..7` = 4 · 8 · 12 · 16 · 24 · 32 · 40px (8px grid, 4px half-step) |
-| Type sizes | `--fs-2xs..4xl` = 8–22px, `--fs-display` 64px, booth `--fs-5xl..8xl`, `--fs-booth-*` |
+| Type sizes | `--fs-2xs..4xl` = 8–22px, `--fs-display` 64px, large numerics `--fs-5xl..8xl`, `--fs-hero` 96px |
 | Shape | `--radius` 3px · `--radius-pill` · `--stroke` 1.5 · hairline = 1px |
 | Motion | `--dur` 200ms · `--dur-enter` 180ms · `--dur-sweep` 400ms · `--dur-flash` 800ms · `--dur-pulse` 1.5s · `--ease` |
 
@@ -197,7 +197,7 @@ The browser estimates its offset to the server clock so `bus → screen` latency
 
 ## 6. Performance Rules
 
-1. Initial JS + CSS **≤150KB** gzipped (report per-chunk sizes; lazy-load booth). Current build ≈ **58KB gz** (index 55 + css 3)  
+1. Initial JS + CSS **≤150KB** gzipped (report per-chunk sizes; single entry). Current build ≈ **58KB gz** (index 55 + css 3)  
 2. Main-thread handler **p95 &lt;8ms** on Pi4  
 3. Event → paint **&lt;100ms** (demo gate)  
 4. No layout thrash — transform/opacity only for motion  
