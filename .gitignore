@@ -41,3 +41,10 @@ certs/
 
 # Wheelhouse (offline pip packages, too large for git)
 wheelhouse/
+
+# Dev launcher artefacts (local state, never commit)
+dev-evidence.db
+dev-evidence.db-shm
+dev-evidence.db-wal
+auth.db.bak.*
+.demo-code
