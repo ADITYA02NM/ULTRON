@@ -4,146 +4,106 @@
 <meta charset=utf-8>
 <meta name=viewport content="width=device-width,initial-scale=1">
 <meta name=color-scheme content=dark>
-<title>ULTRON — Vitals</title>
+<title>ULTRON — vitals</title>
 <style>
-/* Standalone, read-only vitals page: htop for the rig, not a frame dump.
-   One file, no build, no dependency, no external request, vanilla JS.
-   The only frame it ever sends is a clock-sync ping; it never publishes.
-   Written compact on purpose — this is meant to be servable straight from
-   the flash of a weak host, not just from the Pi. Palette and type roles
-   mirror web/src/styles/tokens.css. Vitals are mirrored to localStorage so
-   a hard refresh (which keeps web storage) comes back populated. */
-:root{--bg:#100e0c;--panel:#1a1714;--panel2:#14120f;--border:#2a2420;--border2:#352e28;--text:#ddd4c8;--muted:#9a8e80;--muted2:#6e6050;--green:#3ac870;--yellow:#d4b030;--red:#d04838;--purple:#a060d0;--serif:"Newsreader","Times New Roman",serif;--sans:"Schibsted Grotesk",Arial,sans-serif;--mono:"JetBrains Mono",ui-monospace,"Cascadia Mono",Consolas,monospace;--radius:3px}
+/* Standalone, read-only vitals page. Plain by design: one monospace stack, no
+   cards, no branding, no webfonts. This is htop, not a second copy of the
+   dashboard — anything that only exists to look like the frontend is gone.
+   One file, no build, no dependency, no external request, vanilla JS. The only
+   frame it ever sends is a clock-sync ping; it never publishes. Written compact
+   on purpose: it is meant to be servable straight from the flash of a weak
+   host, so it ships no font file and no stylesheet. Vitals are mirrored to
+   localStorage so a hard refresh (which keeps web storage) comes back
+   populated rather than blank. */
+:root{--bg:#0a0a0a;--fg:#c8c8c8;--dim:#7d7d7d;--dim2:#565656;--line:#2e2e2e;
+--ok:#5fbf6a;--warn:#d8b024;--err:#e0553f;--purple:#a878d0;
+--mono:ui-monospace,Menlo,"DejaVu Sans Mono",Consolas,monospace}
 *{box-sizing:border-box}
-body{margin:0;padding:12px;background:var(--bg);color:var(--text);font:12px/1.5 var(--mono);-webkit-font-smoothing:antialiased}
-::selection{background:rgba(160,96,208,.25)}
-:focus-visible{outline:2px solid var(--green);outline-offset:2px}
-h1{font-family:var(--serif);font-weight:400;font-size:15px;margin:0;letter-spacing:.15em}
-h1 b{color:var(--green)}
-h1 i{font-family:var(--sans);font-style:normal;font-size:10px;letter-spacing:.1em;color:var(--muted);text-transform:uppercase;margin-left:6px}
-h2{font-family:var(--sans);font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin:0 0 6px}
-a{color:var(--green);text-decoration:none}
-a:hover{text-decoration:underline}
-.topbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--border)}
-.chip{padding:2px 7px;border:1px solid var(--border2);border-radius:var(--radius);font-family:var(--sans);font-size:10px;font-weight:600;letter-spacing:.1em}
-.chip.live{color:var(--green);border-color:var(--green)}
-.chip.stale{color:var(--yellow);border-color:var(--yellow)}
-.chip.offline{color:var(--red);border-color:var(--red)}
-.ro{color:var(--muted);border:1px dashed var(--border2);padding:2px 7px;border-radius:var(--radius);font-size:10px}
-button{font-family:var(--sans);font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;background:var(--panel2);color:var(--text);border:1px solid var(--border2);border-radius:var(--radius);padding:5px 9px;cursor:pointer}
-button:hover{border-color:var(--green)}
-button.on{color:var(--green);border-color:var(--green)}
+body{margin:0;padding:10px;background:var(--bg);color:var(--fg);font:12px/1.5 var(--mono)}
+:focus-visible{outline:1px dashed var(--fg);outline-offset:2px}
+h1{font:inherit;font-weight:700;margin:0;letter-spacing:.06em}
+h2{font:inherit;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--dim);margin:10px 0 2px}
+a{color:inherit;text-decoration:none;border:1px solid var(--line);padding:1px 7px}
+a:hover{color:var(--ok);border-color:var(--ok)}
+button{font:inherit;background:none;color:var(--fg);border:1px solid var(--line);padding:1px 7px;cursor:pointer}
+button:hover{border-color:var(--fg)}
+button.on{border-color:var(--ok);color:var(--ok)}
+.hd{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding-bottom:6px;border-bottom:1px solid var(--line)}
 .sp{flex:1}
-.grid{display:grid;grid-template-columns:repeat(12,1fr);gap:8px}
-.panel{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:10px 12px}
-.c3{grid-column:span 3}
-.c4{grid-column:span 4}
-.c5{grid-column:span 5}
-.c12{grid-column:span 12}
-@media(max-width:940px){[class^=c]{grid-column:1/-1}}
-.kv{display:flex;justify-content:space-between;gap:10px;padding:3px 0;border-bottom:1px solid var(--border);font-variant-numeric:tabular-nums}
-.kv:last-child{border-bottom:0}
-.k{color:var(--muted);font-family:var(--sans)}
-.big{font-family:var(--serif);font-size:30px;font-weight:700;line-height:1}
-.meter{font-size:12px;letter-spacing:.5px;white-space:nowrap;overflow:hidden;margin:4px 0 2px}
-.mt{margin-top:6px}
-.ok{color:var(--green)}
-.warn{color:var(--yellow)}
-.err{color:var(--red)}
-.muted{color:var(--muted)}
-.b-green{color:var(--green)}
-.b-yellow{color:var(--yellow)}
-.b-red{color:var(--red)}
+.r{display:grid;grid-template-columns:12ch 1fr;gap:0 8px;padding-left:2ch}
+.k{color:var(--dim)}
+.dim{color:var(--dim2)}
+.ok{color:var(--ok)}
+.warn{color:var(--warn)}
+.err{color:var(--err)}
+.purple{color:var(--purple)}
+.b-green{color:var(--ok)}
+.b-yellow{color:var(--warn)}
+.b-red{color:var(--err)}
 .b-purple{color:var(--purple)}
-.s-info{color:var(--muted2)}
-.s-green{color:var(--green)}
-.s-yellow,.s-warn{color:var(--yellow)}
-.s-red,.s-critical{color:var(--red)}
-.s-purple{color:var(--purple)}
-.t-score{color:var(--green)}
-.t-band{color:var(--purple)}
-.t-alert{color:var(--red)}
-.t-health,.t-history,.t-toast{color:var(--muted2)}
-.t-lan,.t-event{color:var(--yellow)}
-.t-tripwire{color:var(--red)}
-#stream{max-height:36vh;overflow:auto;scrollbar-width:thin;scrollbar-color:var(--border2) transparent}
-.row{padding:2px 4px;border-bottom:1px solid var(--border);white-space:pre-wrap;word-break:break-word}
-.row.bad{border-left:2px solid var(--red);background:rgba(208,72,56,.08)}
-.ts{color:var(--muted2)}
+.meter{color:var(--dim2)}
+#stream{max-height:34vh;overflow:auto;scrollbar-width:thin;scrollbar-color:var(--line) transparent}
+.row{white-space:pre-wrap;word-break:break-word;padding-left:2ch}
+.row.bad{color:var(--err)}
+.ts{color:var(--dim2)}
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
 </head>
 <body>
 
-<div class=topbar>
-<h1>ULT<b>RON</b><i>vitals</i></h1>
-<span class="chip offline" id=conn>OFFLINE</span>
-<span class=ro title="Reads only. The single frame it sends is a clock-sync ping.">READ-ONLY</span>
-<span class=muted id=t-up>—</span>
-<span class=muted id=t-rate>0 msg/s</span>
-<span class=muted id=t-bad>0 bad</span>
+<div class=hd>
+<h1>ULTRON vitals</h1>
+<span class=dim id=conn>offline</span>
+<span class=dim id=t-up>up 0s</span>
+<span class=dim id=t-rate>0 msg/s</span>
+<span class=dim id=t-bad>0 bad</span>
 <span class=sp></span>
-<button id=pause>Pause</button>
-<button id=clear title="Clears the stream and the bad-frame count. The accumulated vitals survive a hard refresh.">Clear</button>
-<button id=copy>Copy</button>
-<a href=/>Operator →</a>
+<button id=pause>pause</button>
+<button id=clear title="Clears the stream and the bad-frame count. The accumulated vitals survive a hard refresh.">clear</button>
+<button id=copy>copy</button>
+<a href=/>operator</a>
 </div>
 
-<div class=grid>
+<section>
+<h2>risk</h2>
+<div class=r><span class=k>score</span><span><b id=v-score>—</b> <span id=v-band>—</span> <span class=meter aria-hidden=true>[<span id=m-fill></span><span id=m-pad></span>]</span></span></div>
+<div class=r><span class=k>held</span><span><span id=v-held>—</span> <span class=dim id=v-changes>0 changes</span></span></div>
+</section>
 
-<div class="panel c3">
-<h2>Risk</h2>
-<div class=kv><span class=k>score</span><span class="big" id=v-score>—</span></div>
-<div class=kv><span class=k>band</span><span id=v-band>—</span></div>
-<div class="meter muted" id=v-meter></div>
-<div class=kv><span class=k>held for</span><span id=v-held>—</span></div>
-<div class=kv><span class=k>band changes</span><span id=v-changes>0</span></div>
-</div>
+<section>
+<h2>nodes</h2>
+<div class=r><span class=k>health age</span><span id=v-nodes class=dim>waiting for health frames</span></div>
+</section>
 
-<div class="panel c4">
-<h2>Nodes · health age</h2>
-<div id=v-nodes class=muted>waiting for health frames</div>
-</div>
+<section>
+<h2>bus</h2>
+<div class=r><span class=k>throughput</span><span><b id=v-total>0</b> msg/s <span class=dim id=v-rates></span></span></div>
+</section>
 
-<div class="panel c5">
-<h2>Bus · msg/s</h2>
-<div id=v-rates></div>
-<div class=kv><span class=k>total</span><span id=v-total>0</span></div>
-</div>
+<section>
+<h2>alerts</h2>
+<div class=r><span class=k>state</span><span><span id=v-open>0</span> open · <span id=v-acked>0</span> acked</span></div>
+<div class=r><span class=k>newest</span><span id=v-top class=dim>none yet</span></div>
+</section>
 
-<div class="panel c4">
-<h2>Alerts</h2>
-<div class=kv><span class=k>open</span><span id=v-open>0</span></div>
-<div class=kv><span class=k>acked</span><span id=v-acked>0</span></div>
-<div id=v-top class=muted>none yet</div>
-</div>
+<section>
+<h2>sensors</h2>
+<div class=r><span class=k>lan</span><span><span id=v-devs>0</span> devices · last <span id=v-join class=dim>—</span></span></div>
+<div class=r><span class=k>tripwires</span><span><span id=v-trips>0</span> · last <span id=v-trip class=dim>—</span></span></div>
+</section>
 
-<div class="panel c4">
-<h2>Sensors</h2>
-<div class=kv><span class=k>LAN devices</span><span id=v-devs>0</span></div>
-<div class=kv><span class=k>last join</span><span id=v-join>—</span></div>
-<div class=kv><span class=k>tripwires</span><span id=v-trips>0</span></div>
-<div class=kv><span class=k>last trip</span><span id=v-trip>—</span></div>
-</div>
+<section>
+<h2>link</h2>
+<div class=r><span class=k>ws</span><span><span id=c-state>—</span> · <span id=c-recon>0</span> reconnects · last frame <span id=c-last>—</span></span></div>
+<div class=r><span class=k>clock</span><span id=c-off>—</span></div>
+<div class=r><span class=k>bus→screen</span><span id=c-lat>—</span></div>
+<div class=r><span class=k>broker</span><span><span id=h-mqtt>—</span> · vault <span id=h-db>—</span> · <span id=h-srv>—</span></span></div>
+</section>
 
-<div class="panel c4">
-<h2>Link</h2>
-<div class=kv><span class=k>ws</span><span id=c-state>—</span></div>
-<div class=kv><span class=k>reconnects</span><span id=c-recon>0</span></div>
-<div class=kv><span class=k>last frame</span><span id=c-last>—</span></div>
-<div class=kv><span class=k>clock</span><span id=c-off>—</span></div>
-<div class=kv><span class=k>bus→screen</span><span id=c-lat>—</span></div>
-<div class=kv><span class=k>broker</span><span id=h-mqtt>—</span></div>
-<div class=kv><span class=k>vault</span><span id=h-db>—</span></div>
-<div class=kv><span class=k>server</span><span id=h-srv>—</span></div>
-</div>
-
-<div class="panel c12">
-<h2>Stream · newest first</h2>
+<section>
+<h2>stream</h2>
 <div id=stream></div>
-</div>
-
-</div>
+</section>
 
 <script>
 "use strict";
@@ -152,7 +112,7 @@ var $=function(i){return document.getElementById(i)};
 var T=["score","band","alert","health","lan","tripwire","history","toast","event"];
 var SENS=["score","band","alert","health","lan","tripwire","event"];
 var NODES=["pi4","pi3a","pi3b","esp32"],BANDS=["GREEN","YELLOW","RED","PURPLE"];
-var CAP=40,TICK=1000,POLL=5000,KEY="ultron.debug.vitals",KEEP=20;
+var CELLS=20,CAP=40,TICK=1000,POLL=5000,KEY="ultron.debug.vitals",KEEP=20;
 var ws=null,live=false,recon=0,lastMsg=0,backoff=1,paused=false,born=Date.now(),i;
 var offs=[],rtts=[],lats=[],frames=[],dirty=true,ra={},rs={};
 for(i=0;i<T.length;i++){ra[T[i]]=0;rs[T[i]]=0}
@@ -165,17 +125,15 @@ function med(a){if(!a.length)return 0;var s=a.slice().sort(function(x,y){return 
 function pct(a,p){if(!a.length)return 0;var s=a.slice().sort(function(x,y){return x-y});return s[Math.min(s.length-1,Math.floor(p/100*s.length))]}
 function span(ms){var s=Math.round(ms/1000);if(s<60)return s+"s";var m=Math.floor(s/60);if(m<60)return m+"m"+("0"+s%60).slice(-2);return Math.floor(m/60)+"h"+("0"+m%60).slice(-2)}
 function clk(s){return isFinite(s)?new Date(s*1000).toISOString().slice(11,19):"--"}
-function fill(v,n){var f=Math.round(v*n);if(!(f>0))f=0;if(f>n)f=n;return new Array(f+1).join("█")+new Array(n-f+1).join("░")}
-function row(p,k,mid,mc,v,vc){
-  var d=document.createElement("div");d.className="kv";
-  var a=document.createElement("span");a.className="k";a.textContent=k;d.appendChild(a);
-  if(mid!=null){var m=document.createElement("span");m.className=mc||"muted";m.textContent=mid;d.appendChild(m)}
-  var b=document.createElement("span");if(vc)b.className=vc;b.textContent=v;d.appendChild(b);
-  p.appendChild(d);
-}
+function bc(b){return b?"b-"+b.toLowerCase():""}
+function sevc(s){return s==="critical"||s==="red"?"err":s==="warn"||s==="yellow"?"warn":s==="purple"?"purple":""}
+/* htop writes a meter as a run of bars inside brackets, filled part coloured and
+   the remainder dim, so the bar is split across two spans rather than built from
+   a string of block glyphs. */
+function tag(p,t,c){var s=document.createElement("span");if(c)s.className=c;s.textContent=t;p.appendChild(s);return s}
 
 /* Contract check, inlined: the old page spent a whole panel on this; here it is
-   one verdict number in the topbar, plus a red row in the stream. */
+   one verdict number in the header, plus a red row in the stream. */
 function conforms(t,d){
   if(T.indexOf(t)<0)return false;
   if(typeof d!=="object"||d===null)return false;
@@ -227,59 +185,60 @@ function ingest(e){
 
 function render(){
   var now=Date.now(),e,at,age,n,keys;
-  $("v-score").textContent=score==null?"—":Math.round(score);
-  e=$("v-band");e.textContent=band||"—";e.className=band?"b-"+band.toLowerCase():"";
-  e=$("v-meter");e.textContent=fill((score||0)/100,20);e.className="meter"+(band?" b-"+band.toLowerCase():" muted");
+  var sc=score==null?null:Math.round(score),cb=bc(band);
+  e=$("v-score");e.textContent=sc==null?"—":sc;e.className=cb;
+  e=$("v-band");e.textContent=band||"—";e.className=cb;
+  var f=sc==null?0:Math.max(0,Math.min(CELLS,Math.round(sc/100*CELLS)));
+  e=$("m-fill");e.textContent=new Array(f+1).join("|");e.className=cb;
+  $("m-pad").textContent=new Array(CELLS-f+1).join(" ");
   $("v-held").textContent=bandAt?span(now-bandAt):"—";
-  $("v-changes").textContent=bandN;
+  $("v-changes").textContent=bandN+(bandN===1?" change":" changes");
 
-  var box=$("v-nodes");keys=Object.keys(nodes);
+  var nb=$("v-nodes");keys=Object.keys(nodes);
   for(i=0;i<NODES.length;i++)if(keys.indexOf(NODES[i])<0)keys.push(NODES[i]);
-  keys.sort();box.textContent="";
-  for(i=0;i<keys.length;i++){
-    n=keys[i];at=nodes[n];age=at?now-at:0;
-    row(box,n,null,null,at?span(age):"—",!at?"muted":age>30000?"err":age>15000?"warn":"ok");
+  keys.sort();nb.textContent="";
+  if(!keys.length){nb.className="dim";nb.textContent="waiting for health frames"}
+  else{
+    nb.className="";
+    for(i=0;i<keys.length;i++){
+      if(i)tag(nb," · ","dim");
+      n=keys[i];at=nodes[n];age=at?now-at:0;
+      tag(nb,at?n+" "+span(age):n+" —",at?(age>30000?"err":age>15000?"warn":"ok"):"dim");
+    }
   }
 
-  var rb=$("v-rates"),mx=0,tot=0;
-  for(i=0;i<SENS.length;i++)if(rs[SENS[i]]>mx)mx=rs[SENS[i]];
-  rb.textContent="";
-  for(i=0;i<SENS.length;i++){
-    tot+=rs[SENS[i]];
-    row(rb,SENS[i],fill(mx>0?rs[SENS[i]]/mx:0,10),"muted",rs[SENS[i]]);
-  }
+  var tot=0,parts=[];
+  for(i=0;i<SENS.length;i++){tot+=rs[SENS[i]];parts.push(SENS[i]+" "+rs[SENS[i]])}
   $("v-total").textContent=tot;
   $("t-rate").textContent=tot+" msg/s";
+  $("v-rates").textContent=parts.join(" · ");
 
   var op=0,ak=0,ids=Object.keys(ack);
   for(i=0;i<ids.length;i++)ack[ids[i]]?ak++:op++;
   $("v-open").textContent=op;
   $("v-acked").textContent=ak;
   var tp=$("v-top");tp.textContent="";
-  if(!top.length){tp.className="muted";tp.textContent="none yet"}
+  if(!top.length){tp.className="dim";tp.textContent="none yet"}
   else{
-    tp.className="mt";
-    for(i=0;i<top.length;i++){
-      var x=document.createElement("div");
-      x.className="s-"+top[i][0];x.textContent=top[i][1];tp.appendChild(x);
-    }
+    tp.className="";
+    for(i=0;i<top.length;i++){if(i)tag(tp," · ","dim");tag(tp,top[i][1],sevc(top[i][0]))}
   }
 
   $("v-devs").textContent=devN;
-  $("v-join").textContent=lastJoin||"—";
+  e=$("v-join");e.textContent=lastJoin||"—";e.className=lastJoin?"":"dim";
   $("v-trips").textContent=trips;
-  $("v-trip").textContent=lastTrip||"—";
+  e=$("v-trip");e.textContent=lastTrip||"—";e.className=lastTrip?"":"dim";
 
-  var st=live?(now-lastMsg>5000?"STALE":"LIVE"):"OFFLINE";
-  e=$("c-state");e.textContent=st;e.className=live?(st==="LIVE"?"ok":"warn"):"err";
+  var st=live?(now-lastMsg>5000?"stale":"live"):"offline";
+  e=$("c-state");e.textContent=st;e.className=st==="live"?"ok":st==="stale"?"warn":"err";
   $("c-recon").textContent=recon;
   $("c-last").textContent=lastMsg?span(now-lastMsg):"—";
   $("c-off").textContent=offs.length?med(offs).toFixed(1)+" ± "+(rtts.length?(Math.min.apply(null,rtts)/2).toFixed(1):"?"):"—";
   $("c-lat").textContent=lats.length?pct(lats,50).toFixed(0)+" / "+pct(lats,95).toFixed(0):"—";
 
   $("t-up").textContent="up "+span(now-born);
-  e=$("t-bad");e.textContent=errs+" bad";e.className=errs?"err":"muted";
-  chip();
+  e=$("t-bad");e.textContent=errs+" bad";e.className=errs?"err":"dim";
+  mark();
 }
 function stream(){
   if(!dirty)return;
@@ -289,39 +248,39 @@ function stream(){
     var f=frames[k],d=document.createElement("div");
     d.className="row"+(f.bad?" bad":"");
     var a=document.createElement("span");a.className="ts";a.textContent=clk(f.ts)+" ";
-    var b=document.createElement("span");b.className="t-"+f.t;b.textContent="["+f.t+"] ";
+    var b=document.createElement("span");b.className="dim";b.textContent="["+f.t+"] ";
     d.appendChild(a);d.appendChild(b);d.appendChild(document.createTextNode(f.txt));
     box.appendChild(d);
   }
 }
 
-function chip(){var c=$("conn"),s=live?(Date.now()-lastMsg>5000?"stale":"live"):"offline";c.className="chip "+s;c.textContent=s.toUpperCase()}
+function mark(){var c=$("conn"),s=live?(Date.now()-lastMsg>5000?"stale":"live"):"offline";c.className=s==="live"?"ok":s==="stale"?"warn":"err";c.textContent=s}
 function ping(){if(ws&&ws.readyState===1)ws.send(JSON.stringify({ctl:"ping",c:Date.now()}))}
 function pong(m){var r=Date.now()-m.c;rtts.push(r);offs.push(m.s-(m.c+r/2));if(offs.length>20){offs.shift();rtts.shift()}}
 function again(){setTimeout(connect,backoff*1000);backoff=Math.min(backoff*2,5)}
 function connect(){
   try{ws=new WebSocket((location.protocol==="https:"?"wss://":"ws://")+location.host+"/ws")}
   catch(err){again();return}
-  ws.addEventListener("open",function(){live=true;backoff=1;lastMsg=Date.now();chip();ping()});
+  ws.addEventListener("open",function(){live=true;backoff=1;lastMsg=Date.now();mark();ping()});
   ws.addEventListener("message",function(ev){
     lastMsg=Date.now();
     var m;try{m=JSON.parse(ev.data)}catch(err){return}
     if(m&&m.ctl==="pong"){pong(m);return}
     if(m&&str(m.t)&&!paused)ingest(m);
-    chip();
+    mark();
   });
-  ws.addEventListener("close",function(){live=false;recon++;chip();again()});
+  ws.addEventListener("close",function(){live=false;recon++;mark();again()});
   ws.addEventListener("error",function(){try{ws.close()}catch(err){}});
 }
 /* The backend's own vitals — essential, and one request every five seconds. */
 function poll(){
   fetch("/healthz",{cache:"no-store"}).then(function(r){return r.json()}).then(function(j){
     var m=$("h-mqtt");m.textContent=j.mqtt_connected?"up":"down";m.className=j.mqtt_connected?"ok":"err";
-    var v=$("h-db");v.textContent=j.db_readable?"readable":"unavailable";v.className=j.db_readable?"ok":"err";
+    var v=$("h-db");v.textContent=j.db_readable?"ok":"bad";v.className=j.db_readable?"":"err";
     $("h-srv").textContent=(j.version||"?")+" · "+j.ws_clients+" ws · up "+span((j.uptime_s||0)*1000);
   }).catch(function(){
     var m=$("h-mqtt");m.textContent="unreachable";m.className="err";
-    $("h-db").textContent="—";$("h-db").className="muted";
+    $("h-db").textContent="—";$("h-db").className="dim";
     $("h-srv").textContent="—";
   });
 }
@@ -354,7 +313,7 @@ function load(){
 }
 
 $("pause").addEventListener("click",function(){
-  paused=!paused;this.textContent=paused?"Resume":"Pause";this.className=paused?"on":"";
+  paused=!paused;this.textContent=paused?"resume":"pause";this.className=paused?"on":"";
 });
 $("clear").addEventListener("click",function(){
   frames=[];lats=[];errs=0;dirty=true;stream();save();
@@ -366,8 +325,8 @@ $("copy").addEventListener("click",function(){
   Object.keys(nodes).forEach(function(n){snap.nodes[n]=Math.round((Date.now()-nodes[n])/1000)});
   var txt=JSON.stringify(snap,null,2);
   if(navigator.clipboard)navigator.clipboard.writeText(txt);else window.prompt("Copy:",txt);
-  this.textContent="Copied";
-  var self=this;setTimeout(function(){self.textContent="Copy"},1200);
+  this.textContent="copied";
+  var self=this;setTimeout(function(){self.textContent="copy"},1200);
 });
 
 load();
