@@ -65,7 +65,7 @@ of any one board is survivable.
 | **Pi4** — governance | Deciding: score, band, alerting | Total. It is the decision-maker, so it can report a false GREEN. This is the crown jewel and the highest-value target in the system. |
 | **Pi3a** — detection | Observing: Suricata, LAN join watch, passive WiFi | It can lie — invent events or suppress them — but it **cannot rewrite history**. The vault belongs to Pi3b. |
 | **Pi3b** — alert | Recording: the vault, SMTP, Markdown reports | It can falsify the record, but it cannot forge an operator session or move a score. |
-| **Dashboard server** | Rendering and operator auth | It opens the vault **read-only**, so it cannot rewrite history. It can mint and revoke sessions. |
+| **Dashboard server** | Rendering, operator auth, and starting the sensor drill | It opens the vault **read-only**, so it cannot rewrite history. It can mint and revoke sessions, and it can launch the drill — which runs one script from a closed set (`demo` or `stress`) via `exec`, never a shell, so a client cannot influence the command line beyond those two names. |
 | **MQTT broker** | Moving messages | It can drop or replay messages. Only Pi4 may write `risk/#` (ACL), so it cannot forge a score by publishing. |
 | **ESP32-C3** — indicator | Showing the band on the OLED and LED | It can display a wrong band. Cosmetic: the dashboard is the source of truth. |
 | **ESP32-WROOM** — tripwire | Reporting a physical event over GPIO/UART | It can raise a false tripwire. The event is weighted, not decisive. |
@@ -88,6 +88,12 @@ Stated plainly, because "notify-only" has consequences people skip past:
   expected behaviour, not bugs. A clean scoreboard is not proof of safety.
 - **The dashboard is not hardened for the open internet.** It is built for a
   management network. Do not port-forward it.
+- **It does not sandbox its own outbound egress.** Once a mail relay or a push
+  topic is configured, the alert node dials out on every band change and the
+  content leaves the LAN. That is an operator-chosen egress, and it stays off
+  until you configure it — with no `PUSH_TOPIC` set, the push channel dials
+  nothing at all. The relay and the topic are part of your attack surface, not
+  an implementation detail.
 
 ### Authorisation and legal boundary
 

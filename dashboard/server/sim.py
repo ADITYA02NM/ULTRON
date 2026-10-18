@@ -40,9 +40,11 @@ OnChange = Callable[[dict[str, Any]], Awaitable[None]]
 class Drill:
     """Owns at most one mock-feed child process at a time."""
 
-    def __init__(self, host: str, port: int) -> None:
+    def __init__(self, host: str, port: int, feed: Path | None = None) -> None:
         self.host = host
         self.port = port
+        # Injectable so the tests can drive the lifecycle without a broker.
+        self.feed = feed or _FEED
         self._proc: asyncio.subprocess.Process | None = None
         self._script: str | None = None
         self._cycles: int = 0
@@ -81,10 +83,10 @@ class Drill:
         cycles = max(0, min(int(cycles), MAX_CYCLES))
         if self.running():
             return await self._announce(changed=False)
-        if not _FEED.exists():
-            raise FileNotFoundError(f"mock feed missing: {_FEED}")
+        if not self.feed.exists():
+            raise FileNotFoundError(f"mock feed missing: {self.feed}")
 
-        argv = [sys.executable, "-u", str(_FEED),
+        argv = [sys.executable, "-u", str(self.feed),
                 "--host", self.host, "--port", str(self.port),
                 "--script", script]
         if cycles:
@@ -101,6 +103,18 @@ class Drill:
         self._watcher = asyncio.create_task(self._watch(self._proc))
         return await self._announce(changed=True)
 
+    async def _cancel_watcher(self) -> None:
+        """Retire the watcher so only one coroutine reports a given ending."""
+        watcher = self._watcher
+        self._watcher = None
+        if watcher is None or watcher.done():
+            return
+        watcher.cancel()
+        try:
+            await watcher
+        except asyncio.CancelledError:
+            pass
+
     async def stop(self) -> dict[str, Any]:
         proc = self._proc
         if proc is None or proc.returncode is not None:
@@ -109,6 +123,9 @@ class Drill:
             self._cycles = 0
             return await self._announce(changed=False)
 
+        # The watcher is awaiting the same proc.wait(). If it wins the race it
+        # announces "stopped" as well, and every operator gets the frame twice.
+        await self._cancel_watcher()
         proc.terminate()
         try:
             await asyncio.wait_for(proc.wait(), timeout=STOP_GRACE_S)
@@ -140,9 +157,7 @@ class Drill:
 
     async def aclose(self) -> None:
         """Server shutdown: never leave an orphan publishing to the broker."""
-        if self._watcher is not None:
-            self._watcher.cancel()
-            self._watcher = None
+        await self._cancel_watcher()
         proc = self._proc
         self._proc = None
         if proc is None or proc.returncode is not None:

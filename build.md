@@ -122,6 +122,44 @@ Alert envelope: `{id, sev, title, src, body, ts, ack:false}`.
 | A5.7 | health | 10s → `ultron/health/pi3b` | tile green |
 | A5.8 | Constraint | **No** hostapd, **no** AC600, **no** local evidence pendrive on Pi3b | greps clean |
 
+### A5.9 Notification configuration (`.notify` + `.env`)
+
+Two files, one job each — configuration and secrets never share a file:
+
+| File | Holds | In git |
+|------|-------|--------|
+| `.notify` | SMTP host/port/user, from/to, push URL, push topic, which bands notify | **no** (gitignored) — `.notify.example` is tracked |
+| `.env` | the SMTP password, and nothing else | **no** (gitignored) — `.env.example` is tracked |
+
+```bash
+cp .notify.example .notify && chmod 600 .notify
+cp .env.example    .env    && chmod 600 .env
+# then, in .env:  ULTRON_SMTP_PASS='<app password>'
+```
+
+`start.sh` sources `.env` with `set -a` *before* it reads `.notify`, and an
+exported `ULTRON_*` value always wins over the file — so a systemd unit can keep
+the password out of both. Gmail needs an **app password** (2-Step Verification
+on), never the account password; the client speaks STARTTLS on 587 and verifies
+the relay's certificate.
+
+Both channels are optional and independent. With neither configured the node
+still runs: it records every alert and every band change to the vault and logs
+`[mail suppressed]` / `[push suppressed]` instead of dialling out. **A
+notification is layered on top of the record, never a prerequisite for it** — a
+dead relay must not cost you the evidence.
+
+Phase 1 notifies on **RED and PURPLE only**. YELLOW is recorded and shown but
+never wakes anyone; a notification that fires on YELLOW trains the operator to
+ignore it. Rehearse by watching `/tmp/ultron-alerts.log`: `notified <address>:
+ULTRON RED` is the proof. A refused credential appears as
+`could not send notification:` and is otherwise ignored **by design**, so the log
+line is the pass criterion — never the exit code.
+
+Push is off unless `PUSH_TOPIC` is set, and the topic name is the whole secret
+(`openssl rand -hex 16`). Pointing `PUSH_URL` at your own ntfy on the Pi4 keeps
+alert traffic on the LAN.
+
 ---
 
 ## A6. Pi4 Governance — risk engine + evidence + mgmt AP

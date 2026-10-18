@@ -3,6 +3,14 @@
 #   cp .notify.example .notify
 #   chmod 600 .notify
 #
+# This file is configuration. The password is a secret and does NOT belong here:
+# it lives in .env, which is also gitignored and which start.sh sources before it
+# reads this file.
+#
+#   cp .env.example .env
+#   chmod 600 .env
+#   # then, in .env:  ULTRON_SMTP_PASS='your app password'
+#
 # .notify is gitignored and stays on this machine. Every value can also be
 # exported in the environment, and the environment wins over this file — useful
 # for CI, or for a systemd unit that reads its secrets from elsewhere:
@@ -60,8 +68,9 @@ PUSH_BANDS=RED,PURPLE
 # SMTP_HOST=smtp.gmail.com
 # SMTP_PORT=587
 # SMTP_USER=you@gmail.com
-# SMTP_PASS=abcd efgh ijkl mnop     # app password, never the account password
 # MAIL_TO=you@gmail.com
+# ...and the app password goes in .env, never here:
+#   ULTRON_SMTP_PASS='abcd efgh ijkl mnop'   # spaces are fine; Google shows groups of 4
 #
 # Gmail wants an app password (turn on 2-Step Verification first). The account
 # password is rejected with a 535, which this client logs as
