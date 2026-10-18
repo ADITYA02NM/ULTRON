@@ -4,7 +4,7 @@ import { LatencyWindow, ClockSync } from "../src/lib/latency";
 import { isEnvelope, isPong } from "../src/contracts/ws";
 import { Store } from "../src/store/store";
 import {
-  eventsNear, filterHistory, fracAt, pickAt, toleranceSec,
+  eventsNear, filterHistory, fracAt, pickAt, tipY, toleranceSec,
 } from "../src/components/History";
 import type { Envelope } from "../src/contracts/ws";
 
@@ -341,5 +341,21 @@ describe("history hover", () => {
     const evs = [{ id: "a", ts: 1000 }, { id: "b", ts: 1060 }];
     eventsNear(evs, 1030, 30, 5);
     expect(evs.map((e) => e.id)).toEqual(["a", "b"]);
+  });
+
+  it("hangs the readout under the pointer, never over the moment", () => {
+    // the pointer's own height wins whenever there is one — including hard
+    // against the top, where a 90/100 score would otherwise sit above it
+    expect(tipY(41, 90, 150)).toBe(41);
+    expect(tipY(2, 90, 150)).toBe(2);
+    // and hard against the bottom it stays below rather than being clamped up
+    expect(tipY(147, 10, 150)).toBe(147);
+  });
+
+  it("hangs it under the sample when the keyboard moved the cursor", () => {
+    // no pointer to follow, so the readout tracks the sample's own height
+    expect(tipY(null, 100, 150)).toBe(0);
+    expect(tipY(null, 30, 150)).toBe(105);
+    expect(tipY(null, 0, 150)).toBe(150);
   });
 });

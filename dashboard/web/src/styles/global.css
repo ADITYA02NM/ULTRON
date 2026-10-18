@@ -509,13 +509,15 @@ canvas.spark-live { box-shadow: inset 0 0 0 1px var(--accent-line); }
 .hist-range-btn.active { color: var(--accent); border-color: var(--accent-line); }
 
 /* Hover readout on the risk line. The rule and the dot are painted into the
-   canvas; the events are DOM so they can wrap and be read out loud. Anchored to
-   one side or the other so a crowded panel never pushes it out of the box. */
+   canvas; the events are DOM so they can wrap and be read out loud. It hangs
+   below the pointer, so the moment you are pointing at is never covered, and is
+   anchored to one side or the other so a crowded panel cannot push it out of
+   the box. */
 .hist-wrap { position: relative; }
 canvas.spark { cursor: crosshair; }
 canvas.spark:focus-visible { outline: 1px solid var(--accent-line); outline-offset: 0; }
 .hist-tip {
-  position: absolute; top: var(--space-1); z-index: var(--intel-z);
+  position: absolute; top: calc(var(--tip-y, 0) * 1px + var(--space-2)); z-index: var(--intel-z);
   display: flex; flex-direction: column; gap: 1px;
   max-width: var(--intel-w); padding: var(--space-1) var(--space-2);
   background: var(--panel-2); border: 1px solid var(--border-2); border-radius: var(--radius);

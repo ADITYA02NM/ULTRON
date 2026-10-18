@@ -1,4 +1,5 @@
 import { memo, useEffect, useRef, useState } from "react";
+import type { CSSProperties } from "react";
 import type { UEvent } from "../store/store";
 import { store, useStore } from "../store/store";
 import { bandForScore } from "../lib/bands";
@@ -97,6 +98,16 @@ export function eventsNear<T extends { ts: number }>(
     .slice(0, max);
 }
 
+/**
+ * Where the readout hangs. Under the pointer whenever there is one, so it never
+ * covers the moment being pointed at; under the sample itself when the cursor
+ * was moved by the keyboard, which has no pointer to hang from.
+ */
+export function tipY(cursorY: number | null, value: number, heightCss: number): number {
+  if (cursorY !== null) return cursorY;
+  return heightCss - (value / 100) * heightCss;
+}
+
 /** UTC clock, the same convention the event feed uses. */
 function clockOf(ts: number): string {
   return new Date(ts * 1000).toISOString().slice(11, 19);
@@ -109,7 +120,7 @@ function beatMs(): number {
 }
 
 /** Geometry from the last paint, so handlers can hit-test without repainting. */
-type Geo = { pts: Array<[number, number]>; t0: number; span: number; css: number };
+type Geo = { pts: Array<[number, number]>; t0: number; span: number; css: number; hcss: number };
 
 function HistoryImpl({ compact }: { compact?: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -122,9 +133,15 @@ function HistoryImpl({ compact }: { compact?: boolean }) {
   // The cursor lives in a ref, not in state: a live drill repaints every frame
   // and a state update per frame would flood the tree. Only the reading itself
   // is state, and it changes when you cross a sample.
-  const [hover, setHover] = useState<{ pick: HoverPick; tol: number; frac: number } | null>(null);
+  const [hover, setHover] = useState<
+    { pick: HoverPick; tol: number; frac: number; y: number } | null
+  >(null);
   const cursorRef = useRef<number | null>(null);
-  const shownRef = useRef<HoverPick | null>(null);
+  // Pointer height in CSS px down from the top of the plot, or null when the
+  // cursor was last moved by the keyboard — there is no pointer to hang the
+  // readout from in that case, so it falls back to the sample's own height.
+  const cursorYRef = useRef<number | null>(null);
+  const shownRef = useRef<{ pick: HoverPick; y: number } | null>(null);
 
   // Only subscribe to events while the readout is open — it is capped at 500
   // rows, so holding it unconditionally would re-render on every sensor frame.
@@ -138,16 +155,22 @@ function HistoryImpl({ compact }: { compact?: boolean }) {
     let geo: Geo | null = null;
 
     let lastFrac = 0;
-    const publish = (p: HoverPick | null) => {
+    const publish = (p: HoverPick | null, y: number) => {
       const prev = shownRef.current;
-      if (!p && !prev) return;
-      // Same sample as last paint: nothing moved, so nothing re-renders.
-      if (p && prev && p.index === prev.index && p.ts === prev.ts) return;
-      shownRef.current = p;
-      if (!p) { setHover(null); return; }
+      if (!p) {
+        if (!prev) return;
+        shownRef.current = null;
+        setHover(null);
+        return;
+      }
+      // Same sample at the same height as last paint: nothing moved, so nothing
+      // re-renders. The vertical half of that check is what lets the readout
+      // follow the pointer down the plot without a render per stray pixel.
+      if (prev && prev.pick.index === p.index && prev.pick.ts === p.ts && prev.y === y) return;
+      shownRef.current = { pick: p, y };
       // The tolerance and the side of the plot come from the frame that was just
       // painted, not from the pick, so they always describe what is on screen.
-      setHover({ pick: p, tol: geo ? toleranceSec(geo.span, geo.css) : 10, frac: lastFrac });
+      setHover({ pick: p, tol: geo ? toleranceSec(geo.span, geo.css) : 10, frac: lastFrac, y });
     };
 
     const paint = (t: number) => {
@@ -182,7 +205,7 @@ function HistoryImpl({ compact }: { compact?: boolean }) {
           noteRef.current.textContent = isLive ? "live — waiting for samples" : "history empty — skeleton";
         }
         geo = null;
-        publish(null);
+        publish(null, 0);
         return;
       }
       const lastV = hist[hist.length - 1]![1];
@@ -220,14 +243,16 @@ function HistoryImpl({ compact }: { compact?: boolean }) {
       }
       ctx.globalAlpha = 1;
 
-      geo = { pts: hist, t0, span, css: c.clientWidth || 1 };
+      geo = { pts: hist, t0, span, css: c.clientWidth || 1, hcss: h / dpr };
       // Where the cursor is, resolved against this frame's data — so during a
       // live drill the rule stays over the same moment as the line scrolls
       // under it rather than over the same pixel.
       const cur = cursorRef.current;
       const hit = cur === null ? null : pickAt(hist, t0, span, cur);
+      let tip = 0;
       if (hit) {
         lastFrac = cur === null ? 0 : Math.min(1, Math.max(0, cur));
+        tip = tipY(cursorYRef.current, hit.value, geo.hcss);
         const px = ((hit.ts - t0) / span) * w;
         const py = h - (hit.value / 100) * h;
         ctx.strokeStyle = cssVar("--muted");
@@ -238,7 +263,7 @@ function HistoryImpl({ compact }: { compact?: boolean }) {
         ctx.fillStyle = cssVar("--text");
         ctx.beginPath(); ctx.arc(px, py, 2.5 * dpr, 0, Math.PI * 2); ctx.fill();
       }
-      publish(hit);
+      publish(hit, tip);
     };
 
     const loop = (t: number) => { paint(t); raf = requestAnimationFrame(loop); };
@@ -260,11 +285,13 @@ function HistoryImpl({ compact }: { compact?: boolean }) {
       const r = c && geo && geo.pts.length ? c.getBoundingClientRect() : null;
       if (!r || !r.width) return;
       cursorRef.current = Math.min(1, Math.max(0, (ev.clientX - r.left) / r.width));
+      cursorYRef.current = ev.clientY - r.top;
       nudge();
     };
     const onLeave = () => {
-      if (cursorRef.current === null) return;
+      if (cursorRef.current === null && cursorYRef.current === null) return;
       cursorRef.current = null;
+      cursorYRef.current = null;
       nudge();
     };
     const onKey = (ev: KeyboardEvent) => {
@@ -280,6 +307,8 @@ function HistoryImpl({ compact }: { compact?: boolean }) {
       else return;
       ev.preventDefault();
       cursorRef.current = fracAt(geo.pts, geo.t0, geo.span, i);
+      // No pointer in this path, so the readout hangs from the sample instead.
+      cursorYRef.current = null;
       nudge();
     };
 
@@ -293,7 +322,7 @@ function HistoryImpl({ compact }: { compact?: boolean }) {
     window.addEventListener("resize", sync);
     return () => {
       unsub(); looping = false; cancelAnimationFrame(raf);
-      cursorRef.current = null; shownRef.current = null;
+      cursorRef.current = null; cursorYRef.current = null; shownRef.current = null;
       c?.removeEventListener("pointermove", onMove);
       c?.removeEventListener("pointerleave", onLeave);
       c?.removeEventListener("blur", onLeave);
@@ -314,7 +343,14 @@ function HistoryImpl({ compact }: { compact?: boolean }) {
         aria-label={`Risk score over the last ${compact && live ? "90 seconds" : range}. Hover, or use the arrow keys, to see what happened at a moment.`}
       />
       {hover && (
-        <div className={"hist-tip" + (hover.frac < 0.5 ? " left" : " right")} role="status">
+        <div
+          className={"hist-tip" + (hover.frac < 0.5 ? " left" : " right")}
+          // Unitless on purpose: the token sheet is where the px lives, so the
+          // readout is positioned by one calc() in CSS rather than a hard number
+          // smuggled in from here.
+          style={{ "--tip-y": String(Math.round(hover.y)) } as CSSProperties}
+          role="status"
+        >
           <div className="hist-tip-hd">
             <span className="num">{clockOf(hover.pick.ts)}</span>
             <span className={"hist-sev sev-" + bandForScore(hover.pick.value).toLowerCase()}>
