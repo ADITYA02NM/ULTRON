@@ -572,7 +572,7 @@ Cloud dashboards fail when the network is degraded. LED/OLED keeps posture visib
 | **Category** | **IoT** |
 | **Repository** | https://github.com/ADITYA02NM/ULTRON |
 | **Hardware** | 3× Raspberry Pi, 2× ESP32, ~$290 |
-| **License** | MIT — [`LICENSE`](LICENSE) · third-party notices in [`THIRD_PARTY.md`](THIRD_PARTY.md) |
+| **License** | Apache-2.0 — [`LICENSE`](LICENSE) · [`NOTICE`](NOTICE) · third-party inventory in [`THIRD_PARTY.md`](THIRD_PARTY.md) |
 | **Security boundaries** | [`SECURITY.md`](SECURITY.md) — notify-only, per-node trust split, no traffic decryption, authorisation required for passive monitoring |
 
 **Abstract (≈150 words):**  

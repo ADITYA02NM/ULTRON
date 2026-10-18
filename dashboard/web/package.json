@@ -2,7 +2,7 @@
   "name": "ultron-web",
   "private": true,
   "version": "0.3.0",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "type": "module",
   "description": "ULTRON operator console (Pi4). React + TS, hand-built SVG/canvas, no runtime deps beyond React.",
   "engines": {

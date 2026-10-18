@@ -1,0 +1,10 @@
+ULTRON — Autonomous Smart-House IoT Cybersecurity Ecosystem
+Copyright 2026 ADITYA02NM
+
+This product includes software developed by third parties, under their own
+licences. The full inventory — dependency licences and the complete SIL Open
+Font License 1.1 text covering the four self-hosted typefaces the dashboard
+serves — is in THIRD_PARTY.md.
+
+Suricata, mosquitto and nftables are invoked as separate processes. They are
+not included in, linked against, or redistributed with this work.

@@ -1,6 +1,7 @@
 # Third-party notices
 
-ULTRON's own source is MIT-licensed — see [`LICENSE`](LICENSE).
+ULTRON's own source is Apache-2.0-licensed — see [`LICENSE`](LICENSE) and
+[`NOTICE`](NOTICE).
 
 It also **bundles and depends on software that is not ours**. Those licences are
 listed here because several of them require the notice to travel with the code.
@@ -228,8 +229,8 @@ This is the licensing boundary that matters most for ULTRON, and it is deliberat
 
 ULTRON does not link against these, does not patch them, and does not ship them
 in this repository. It talks to them across a process boundary or a socket. As a
-consequence **their licences do not reach ULTRON's own source**, and ULTRON's MIT
-licence does not reach them.
+consequence **their licences do not reach ULTRON's own source**, and ULTRON's
+Apache-2.0 licence does not reach them.
 
 The practical consequences, which are worth knowing before you build a booth image:
 

@@ -377,7 +377,8 @@ ULTRON/
 ├── architecture.md        ← in-depth system architecture + wiring
 ├── dashboard.md           ← dashboard spec (no compromise)
 ├── promt.md               ← premium AI operating prompt
-├── LICENSE                ← MIT
+├── LICENSE                ← Apache-2.0
+├── NOTICE                 ← attribution notices (Apache-2.0 §4)
 ├── SECURITY.md            ← posture, boundaries, reporting
 ├── THIRD_PARTY.md         ← font + dependency licences
 ├── dashboard/             ← web/ (React+TS), server/ (aiohttp), debug/, tools/, tests/
@@ -398,7 +399,13 @@ Work items belong in `build.md` tracks — do not open Phase 2/3 features.
 
 ## License
 
-**MIT** — see [`LICENSE`](LICENSE). Use it, fork it, ship it, sell it.
+**Apache License 2.0** — see [`LICENSE`](LICENSE), with attribution notices in
+[`NOTICE`](NOTICE). Use it, fork it, ship it, sell it.
+
+Apache-2.0 rather than MIT for one reason: it grants a patent licence explicitly
+(§3) and states plainly that no trademark rights come with it (§6). MIT is silent
+on both. For an appliance a company might actually deploy, that silence is
+precisely what slows adoption — so the grant is given rather than left implied.
 
 Three things travel with that permission:
 
@@ -416,9 +423,9 @@ Three things travel with that permission:
 - **The appliance is Phase 1 notify-only.** It detects, scores and alerts; it does
   not block or remediate. Response is Phase 2 — see [`blackhat.md`](blackhat.md).
 
-"ULTRON" is the name of this project and no trademark claim is made over it. It
-is not affiliated with, endorsed by, or connected to any similarly named
-product or entity.
+The Apache licence grants no rights in the project's name or marks (§6). ULTRON
+is not affiliated with, endorsed by, or connected to any similarly named product
+or entity.
 
 ---
 

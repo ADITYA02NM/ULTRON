@@ -10,6 +10,59 @@ network. Response and remediation are Phase 2.
 
 ## [Unreleased]
 
+### Changed
+
+- **Relicensed to Apache-2.0**, from MIT. Apache-2.0 grants a patent licence
+  explicitly (§3) and states that no trademark rights are conveyed (§6). MIT is
+  silent on both, and that silence is what slows adoption of security tooling by
+  organisations that would otherwise deploy it. `NOTICE` now carries the
+  attribution text the licence expects (§4).
+
+### Added
+
+- **`THIRD_PARTY.md`** — the third-party licence inventory that was missing
+  entirely. It carries the four font copyright notices, the full SIL Open Font
+  License 1.1 text, the Python and Node dependency licences, and the boundary
+  that matters most: Suricata, mosquitto and nftables are **invoked as separate
+  processes**, never linked against or redistributed, so their copyleft licences
+  do not reach this source. The dashboard self-hosts four OFL typefaces and was
+  serving them with no notice at all — anyone redistributing a built dashboard
+  or a booth image had no right to pass those fonts on.
+- **`SECURITY.md` → "Security boundaries"** — trust zones, a per-component table
+  of what each board is trusted for and what it can do if compromised (the
+  architectural claim being that no node both decides and records), an explicit
+  list of what the appliance does **not** defend against, the authorisation
+  boundary that applies to passive wireless and LAN monitoring, and the residual
+  risk accepted on purpose.
+- **`dashboard/web/package.json`** — gained `license` (it had none, which reads
+  as all-rights-reserved to every tool that asks) and `engines.node >= 20`.
+- **Animated startup mark** on the lock screen (`BootMark.tsx`): the risk engine
+  at the centre of the mesh, a detection wave leaving the core, and the watched
+  nodes reporting in turn. CSS keyframes, so the existing
+  `prefers-reduced-motion` rule disables it for free.
+
+### Fixed
+
+- **Credential revocation did not end the sessions it authorised.** Revoking a
+  passkey revoked a row and nothing else: live sessions kept working for the
+  remainder of their TTL, and an open WebSocket was never re-checked. Sessions
+  are now refused once their credential is revoked, the endpoint closes the
+  affected sockets and reports the count, and sockets re-validate every 20 s.
+- **No Origin check on state-changing requests.** `POST /auth/skip` needs no
+  cookie to mint a session, so any page could have submitted a form to it.
+  POST/PUT/PATCH/DELETE now require a configured `Origin`.
+- The rate-limit table no longer grows without bound, and a rejected request is
+  audited once per window instead of writing a row per attempt.
+- The demo access code is 128 bits rather than 32; verification failures return a
+  generic message; the debug basic-auth comparison is constant-time;
+  `auth.db` and `.demo-code` are `0600`.
+- The demo-rig section of `SECURITY.md` said "Two behaviours" and listed three.
+
+### Security
+
+- 17 new regression tests across `test_session_lifecycle.py` and
+  `test_hardening.py`. Backend 50 → 67 passing.
+
 ## [0.5.0-phase1] — 2026-10-18
 
 ### Added
