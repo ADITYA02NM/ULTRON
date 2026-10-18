@@ -16,6 +16,8 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    // Fail loudly if the port is taken rather than drifting to another one.
+    strictPort: true,
     proxy: {
       "/ws": {
         target: "ws://localhost:8081",

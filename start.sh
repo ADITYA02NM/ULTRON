@@ -12,6 +12,21 @@
 # ---------------------------------------------------------------------------
 set -euo pipefail
 
+VITE_PORT="${ULTRON_VITE_PORT:-5173}"
+
+# True when whatever is listening on $1 belongs to THIS repo. Without this the
+# launcher happily "reuses" another project's server and then serves the wrong
+# app to the browser while reporting everything healthy.
+port_is_ours() {
+  local port="$1" pid cwd
+  pid="$(ss -ltnp 2>/dev/null | grep ":$port " | grep -o 'pid=[0-9]*' | head -1 | cut -d= -f2)"
+  [ -n "$pid" ] || return 1
+  cwd="$(readlink "/proc/$pid/cwd" 2>/dev/null || true)"
+  case "$cwd" in "$REPO"*) return 0 ;; esac
+  return 1
+}
+
+
 REPO="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PY="$REPO/.venv/bin/python"
 DASH="$REPO/dashboard"
@@ -206,7 +221,7 @@ export ULTRON_MQTT_PORT=1883
 export ULTRON_MQTT_USER=""            # anonymous; bridge.py drops auth when empty
 export ULTRON_RP_ID=localhost         # must be a hostname — config rejects IPs
 export ULTRON_RP_NAME=ULTRON
-export ULTRON_ORIGINS="$ORIGINS"      # 5173 has to be here or the WS upgrade 403s
+export ULTRON_ORIGINS="$ORIGINS"      # the vite origin has to be here or the WS upgrade 403s
 export ULTRON_EVIDENCE_DB="$REPO/dev-evidence.db"
 export ULTRON_DEBUG=1
 export ULTRON_ALLOW_LAN=1             # permit the LAN origin added above
@@ -243,6 +258,13 @@ fi
 # ---------------------------------------------------------------------------
 # 6. Backend
 # ---------------------------------------------------------------------------
+if ! port_free "$HTTP_PORT" && ! port_is_ours "$HTTP_PORT"; then
+  echo "[start] ERROR: port $HTTP_PORT is held by another program, not this repo."
+  echo "[start]        Refusing to reuse it - the browser would show the wrong app."
+  echo "[start]        Stop that service, or set ULTRON_HTTP_PORT."
+  exit 1
+fi
+
 if port_free "$HTTP_PORT"; then
   start_bg server "$DASH" "$PY" -m server.main
   echo -n "[start] backend http://localhost:$HTTP_PORT"
@@ -269,12 +291,19 @@ fi
 # 7. Frontend
 # ---------------------------------------------------------------------------
 if [ "$MODE" = "dev" ]; then
-  if port_free 5173; then
+    if ! port_free "$VITE_PORT" && ! port_is_ours "$VITE_PORT"; then
+    echo "[start] ERROR: port $VITE_PORT is held by another program, not this repo."
+    echo "[start]        ULTRON's vite cannot bind, so the browser would show the"
+    echo "[start]        wrong app. Stop that service, or set ULTRON_VITE_PORT."
+    exit 1
+  fi
+
+if port_free "$VITE_PORT"; then
     start_bg vite "$DASH/web" "$DASH/web/node_modules/.bin/vite"
-    echo -n "[start] vite http://localhost:5173"
+    echo -n "[start] vite http://localhost:$VITE_PORT"
     ok=0
     for _ in $(seq 1 40); do
-      if curl -sf "http://localhost:5173/" -o /dev/null 2>/dev/null; then
+      if curl -sf "http://localhost:$VITE_PORT/" -o /dev/null 2>/dev/null; then
         ok=1; break
       fi
       echo -n "."
@@ -288,7 +317,7 @@ if [ "$MODE" = "dev" ]; then
     fi
     echo "[start] vite healthy"
   else
-    echo "[start] vite: 5173 already in use, reusing it"
+    echo "[start] vite: $VITE_PORT already in use (ours), reusing it"
   fi
 else
   # --prod serves the static bundle, so it has to exist and be current.
@@ -323,7 +352,7 @@ if [ "$MODE" = "prod" ]; then
   DASH_URL="http://localhost:$HTTP_PORT"
   LAN_NOTE="reachable from your phone/2nd laptop at http://$LAN_IP:$HTTP_PORT"
 else
-  DASH_URL="http://localhost:5173"
+  DASH_URL="http://localhost:$VITE_PORT"
   LAN_NOTE="vite dev binds loopback only — use --prod for the phone"
 fi
 
