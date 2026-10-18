@@ -572,7 +572,8 @@ Cloud dashboards fail when the network is degraded. LED/OLED keeps posture visib
 | **Category** | **IoT** |
 | **Repository** | https://github.com/ADITYA02NM/ULTRON |
 | **Hardware** | 3× Raspberry Pi, 2× ESP32, ~$290 |
-| **License** | MIT |
+| **License** | MIT — [`LICENSE`](LICENSE) · third-party notices in [`THIRD_PARTY.md`](THIRD_PARTY.md) |
+| **Security boundaries** | [`SECURITY.md`](SECURITY.md) — notify-only, per-node trust split, no traffic decryption, authorisation required for passive monitoring |
 
 **Abstract (≈150 words):**  
 ULTRON is a zero-cloud IoT security ecosystem for the smart house, built on three Raspberry Pis and two ESP32s (~$290). Phase 1 delivers lean detection (Suricata IDS, passive LAN new-device watch, passive WiFi, GPIO tripwires — no honeypots or active scanners), governance (weighted 0–100 risk score with GREEN/YELLOW/RED/PURPLE bands, decay, hysteresis), and alert management (sub-100ms single-file dashboard, SMTP on critical bands, LED/OLED physical indicators, acknowledgement and Markdown evidence). Nodes are pillar-isolated: Pi4 governance, Pi3a detection, Pi3b alert. The system runs autonomously offline in a single ULTRON mode for homes and small premises. Automated response and automated threat analysis/hunting are documented as future phases and intentionally not shipped in Phase 1. The demo shows an end-to-end detect → govern → alert loop visible on screen and in hardware.

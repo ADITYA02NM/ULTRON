@@ -39,9 +39,82 @@ Assets worth protecting, in order:
    keys only; private keys never leave the authenticator.
 3. **The risk score** — a forged score is a forged sense of safety.
 
+## Security boundaries
+
+The threat model above says what we protect. This section says **where the
+system stops** — the lines a reviewer should hold us to, and the ones that are
+architectural rather than temporary.
+
+### Trust zones
+
+| Zone | What it is | Trusted for |
+|------|-----------|-------------|
+| **Operator** | The browser and the authenticator holding the passkey | Acting as the owner. The private key never leaves the device. |
+| **Management network** | The link the dashboard is served over | Carrying operator sessions. TLS via the offline local CA in Phase 1. Anything on this network can reach the dashboard port. |
+| **Monitored LAN** | The home/office network under observation | **Nothing.** It is observed, never trusted. The LAN watch is read-only. |
+| **Sensor plane** | MQTT broker and the three nodes | Moving messages. Administered by ACL, not by hope. |
+| **Physical** | The boxes, the USB evidence drive, the SD cards | Nothing. Hands on the hardware is game over for that hardware. |
+
+### Component boundaries — the separation that is the point
+
+No single node both **decides** and **records**. That split is why a compromise
+of any one board is survivable.
+
+| Component | Trusted for | If it is compromised |
+|-----------|-------------|----------------------|
+| **Pi4** — governance | Deciding: score, band, alerting | Total. It is the decision-maker, so it can report a false GREEN. This is the crown jewel and the highest-value target in the system. |
+| **Pi3a** — detection | Observing: Suricata, LAN join watch, passive WiFi | It can lie — invent events or suppress them — but it **cannot rewrite history**. The vault belongs to Pi3b. |
+| **Pi3b** — alert | Recording: the vault, SMTP, Markdown reports | It can falsify the record, but it cannot forge an operator session or move a score. |
+| **Dashboard server** | Rendering and operator auth | It opens the vault **read-only**, so it cannot rewrite history. It can mint and revoke sessions. |
+| **MQTT broker** | Moving messages | It can drop or replay messages. Only Pi4 may write `risk/#` (ACL), so it cannot forge a score by publishing. |
+| **ESP32-C3** — indicator | Showing the band on the OLED and LED | It can display a wrong band. Cosmetic: the dashboard is the source of truth. |
+| **ESP32-WROOM** — tripwire | Reporting a physical event over GPIO/UART | It can raise a false tripwire. The event is weighted, not decisive. |
+
+### What ULTRON does not defend against
+
+Stated plainly, because "notify-only" has consequences people skip past:
+
+- **It does not stop anything.** No blocking, quarantining or remediation in
+  Phase 1. Detection latency is exposure time.
+- **It does not inspect encrypted traffic.** A device exfiltrating data over
+  HTTPS is invisible to it.
+- **Passive WiFi does not decrypt.** It observes 802.11 frames; it cannot read
+  the contents of WPA2/WPA3 traffic.
+- **It does not harden the Pis themselves.** No secure boot, no measured boot,
+  no encrypted root. Physical access to a board is compromise of that board.
+- **It has no notion of "known good".** A new MAC is *unknown*, not *malicious*.
+  The LAN watch reports arrivals; it does not authenticate devices.
+- **The risk score is a heuristic.** False positives and false negatives are
+  expected behaviour, not bugs. A clean scoreboard is not proof of safety.
+- **The dashboard is not hardened for the open internet.** It is built for a
+  management network. Do not port-forward it.
+
+### Authorisation and legal boundary
+
+ULTRON performs **passive wireless monitoring** and **LAN device discovery**.
+This is a real boundary, not a formality:
+
+- Run it only on networks **you own or have written authorisation to monitor**.
+  Monitoring a third party's network may be unlawful where you are.
+- It records MAC addresses and SSIDs, which are personal data under GDPR and
+  comparable regimes. The evidence vault is a store of personal data and should
+  be handled as one — retained, and deleted, deliberately.
+- ULTRON captures no user payload by design. Keeping it that way is a feature;
+  a change that starts capturing traffic content is a scope change that needs
+  re-review.
+
+### Residual risk we accept
+
+| Risk | Why it is accepted |
+|------|--------------------|
+| Demo-rig escapes stay in the tree | They are load-bearing for the demo; documented below and reviewed on each release. |
+| Detection is heuristic | A transparent, explainable score beats an opaque one that is wrong silently. |
+| Notify-only | Response is a Phase 2 decision, taken deliberately rather than shipped half-built. |
+| Physical access defeats the appliance | A shelf box in a house cannot win against an attacker holding the box. |
+
 ## Deliberate, documented posture (read before reporting)
 
-Two behaviours are intentional and exist **only** for the laptop demo rig. If
+Three behaviours are intentional and exist **only** for the laptop demo rig. If
 you deploy this beyond a rehearsal, gate them off.
 
 - **`POST /auth/skip`** mints an authenticated session **with no credential at

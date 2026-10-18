@@ -365,6 +365,8 @@ sudo systemctl enable --now mosquitto
 | 5 | **use.md** | Endpoints, WS/MQTT contract, data-flow + config reference (from code) |
 | 6 | **blackhat.md** | Full paper / design rationale |
 | 7 | **promt.md** | AI operating brief for builders |
+| 8 | **SECURITY.md** | Security posture, trust boundaries, what it does **not** defend against |
+| 9 | **THIRD_PARTY.md** | Licence inventory — fonts, dependencies, invoked-not-linked
 
 ```
 ULTRON/
@@ -375,6 +377,9 @@ ULTRON/
 ├── architecture.md        ← in-depth system architecture + wiring
 ├── dashboard.md           ← dashboard spec (no compromise)
 ├── promt.md               ← premium AI operating prompt
+├── LICENSE                ← MIT
+├── SECURITY.md            ← posture, boundaries, reporting
+├── THIRD_PARTY.md         ← font + dependency licences
 ├── dashboard/             ← web/ (React+TS), server/ (aiohttp), debug/, tools/, tests/
 ├── systemd/               ← sentinel-dashboard.service
 ├── assets/
@@ -393,7 +398,27 @@ Work items belong in `build.md` tracks — do not open Phase 2/3 features.
 
 ## License
 
-MIT
+**MIT** — see [`LICENSE`](LICENSE). Use it, fork it, ship it, sell it.
+
+Three things travel with that permission:
+
+- **[`THIRD_PARTY.md`](THIRD_PARTY.md)** — everything ULTRON bundles or depends on
+  that is not ours: the four self-hosted fonts under the SIL Open Font License
+  (with the licence text and copyright notices the OFL requires), the Python and
+  Node dependencies, and an explicit note on Suricata/mosquitto/nftables, which
+  ULTRON **invokes as separate processes rather than linking** — so their
+  copyleft licences do not reach this source. If you redistribute a built
+  dashboard or a disk image, that file goes with it.
+- **[`SECURITY.md`](SECURITY.md)** — the security posture: trust boundaries
+  between the three Pis and the two ESP32s, what the appliance deliberately does
+  **not** defend against, and the authorisation boundary that applies to passive
+  wireless and LAN monitoring.
+- **The appliance is Phase 1 notify-only.** It detects, scores and alerts; it does
+  not block or remediate. Response is Phase 2 — see [`blackhat.md`](blackhat.md).
+
+"ULTRON" is the name of this project and no trademark claim is made over it. It
+is not affiliated with, endorsed by, or connected to any similarly named
+product or entity.
 
 ---
 
