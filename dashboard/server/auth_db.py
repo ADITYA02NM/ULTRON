@@ -114,6 +114,13 @@ class AuthDB:
             self._conn.execute("PRAGMA journal_mode=WAL")
             self._conn.execute("PRAGMA foreign_keys=ON")
             self._conn.executescript(_SCHEMA)
+            # The audit trail records operator addresses and session hashes.
+            # sqlite creates the file world-readable under a default umask.
+            for suffix in ("", "-wal", "-shm"):
+                try:
+                    Path(str(self.path) + suffix).chmod(0o600)
+                except OSError:
+                    pass
         return self._conn
 
     def close(self) -> None:
@@ -230,6 +237,17 @@ class AuthDB:
         s = Session(row[0], row[1], row[2], row[3], row[4], bool(row[5]))
         if s.revoked or s.expires_at < time.time():
             return None
+        # Revoking a credential has to end the sessions it authorised. Otherwise
+        # a lost or stolen passkey keeps its dashboard access until its session
+        # TTL happens to lapse.
+        #
+        # Placeholder rows are exempt: the demo/skip paths deliberately create a
+        # REVOKED credential with no key material purely so the sessions foreign
+        # key holds. Such a row cannot authenticate on its own, so it must not
+        # invalidate the session it carries.
+        cred = self.get_credential(s.credential_id)
+        if cred is not None and cred.revoked and cred.public_key:
+            return None
         return s
 
     def revoke_session(self, sid: str) -> bool:
@@ -246,6 +264,26 @@ class AuthDB:
         )
         self._db().commit()
         return cur.rowcount > 0
+
+    def revoke_sessions_for_credential(self, credential_id: str) -> list[str]:
+        """Revoke every live session belonging to a credential.
+
+        Returns the affected session id_hashes so the caller can close any
+        WebSocket those sessions are still holding open — revoking a row does
+        not by itself disconnect anybody.
+        """
+        rows = self._db().execute(
+            "SELECT id_hash FROM sessions WHERE credential_id = ? AND revoked = 0",
+            (credential_id,),
+        ).fetchall()
+        hashes = [r[0] for r in rows]
+        if hashes:
+            self._db().execute(
+                "UPDATE sessions SET revoked = 1 WHERE credential_id = ?",
+                (credential_id,),
+            )
+            self._db().commit()
+        return hashes
 
     def revoke_all_sessions(self) -> int:
         cur = self._db().execute(

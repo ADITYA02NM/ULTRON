@@ -21,11 +21,12 @@ import ipaddress
 import json
 import logging
 import os
+import secrets
 import ssl
 import time
 from pathlib import Path
 
-from aiohttp import WSMsgType, web
+from aiohttp import WSCloseCode, WSMsgType, web
 
 from . import clock, csp, db
 from .auth import add_auth_routes
@@ -57,7 +58,8 @@ def _check_basic(request: web.Request, user: str, pw: str) -> bool:
         u, _, p = raw.partition(":")
     except Exception:  # noqa: BLE001
         return False
-    return u == user and p == pw
+    return (secrets.compare_digest(u, user)
+            and secrets.compare_digest(p, pw))
 
 
 def _debug_gate(request: web.Request, cfg: Config) -> None:
@@ -174,6 +176,36 @@ def _validate_ws_origin(request: web.Request, origins: list[str]) -> bool:
     return origin in origins
 
 
+# State-changing methods a browser can issue cross-site without a preflight.
+_UNSAFE_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
+
+
+def _origin_guard(origins: list[str]):
+    """Reject cross-site state-changing requests.
+
+    The WebSocket upgrade checked Origin from the start, but the POST routes did
+    not — so a third-party page could silently submit a form to /auth/skip,
+    which needs no cookie to mint itself a session, or to /auth/demo. A browser
+    always attaches Origin to a cross-site POST, so requiring it to match closes
+    that path.
+
+    A *missing* Origin is not a browser cross-site request (curl, the CLI, the
+    test client), so those keep working — and they cannot be a CSRF vector
+    because there is no victim cookie to ride.
+    """
+    @web.middleware
+    async def middleware(request: web.Request, handler):
+        if request.method in _UNSAFE_METHODS:
+            origin = request.headers.get("Origin", "")
+            if origin and origin not in origins:
+                LOG.warning("blocked cross-origin %s %s (origin=%s)",
+                            request.method, request.path, origin)
+                raise web.HTTPForbidden(text="Origin not allowed")
+        return await handler(request)
+
+    return middleware
+
+
 def _ws_session(request: web.Request) -> str | None:
     """Validate session cookie on WS upgrade. Returns sid_hash or None."""
     from .auth import SESSION_COOKIE
@@ -185,6 +217,34 @@ def _ws_session(request: web.Request) -> str | None:
     if not session:
         return None
     return hashlib.sha256(sid.encode()).hexdigest()
+
+
+# How often an established socket re-checks the session that opened it.
+WS_REVALIDATE_S = 20.0
+
+
+async def _guard_session(ws: web.WebSocketResponse, request: web.Request,
+                         sid_hash: str) -> None:
+    """Close a socket as soon as the session that opened it stops being valid.
+
+    A WebSocket upgrade is a single check, and a WebSocket is never
+    re-authenticated afterwards. Without this loop, a session that expires or is
+    revoked keeps streaming to whoever holds the connection — the socket simply
+    outlives the authority that created it.
+    """
+    from .auth import SESSION_COOKIE
+
+    auth_db: AuthDB = request.app["auth_db"]
+    interval = float(request.app.get("ws_revalidate_s", WS_REVALIDATE_S))
+    while True:
+        await asyncio.sleep(interval)
+        sid = request.cookies.get(SESSION_COOKIE, "")
+        if sid and auth_db.validate_session(sid):
+            continue
+        LOG.info("closing socket: session no longer valid (session=%s…)", sid_hash[:12])
+        await ws.close(code=WSCloseCode.POLICY_VIOLATION,
+                       message=b"session expired or revoked")
+        return
 
 
 async def handle_ws(request: web.Request) -> web.WebSocketResponse:
@@ -219,6 +279,9 @@ async def handle_ws(request: web.Request) -> web.WebSocketResponse:
     await send(envelope("toast", {"msg": "MQTT LIVE" if bridge.connected else "MQTT DEGRADED",
                                   "sev": "green" if bridge.connected else "red"}))
 
+    # The upgrade is a one-time check. Keep watching the session so a socket
+    # cannot outlive the authority that opened it.
+    guard = asyncio.create_task(_guard_session(ws, request, sid_hash))
     try:
         async for msg in ws:
             if msg.type != WSMsgType.TEXT:
@@ -245,6 +308,7 @@ async def handle_ws(request: web.Request) -> web.WebSocketResponse:
                     "msg": f"ACK {'sent' if ok else 'queued'}: {aid}",
                     "sev": "green" if ok else "yellow"}))
     finally:
+        guard.cancel()
         session_mgr.untrack(sid_hash, ws)
         hub.remove(ws)
         LOG.info("WS leave (%d clients)", hub.count)
@@ -274,7 +338,7 @@ async def _on_cleanup(app: web.Application) -> None:
 
 def create_app(cfg: Config | None = None) -> web.Application:
     cfg = cfg or load()
-    app = web.Application()
+    app = web.Application(middlewares=[_origin_guard(cfg.origins)])
     app["cfg"] = cfg
     app["hub"] = Hub()
     app["bridge"] = Bridge(cfg, app["hub"])

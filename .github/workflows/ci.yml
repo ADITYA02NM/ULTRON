@@ -39,7 +39,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install node dependencies
-        run: pip install pytest pytest-asyncio paho-mqtt pyserial
+        run: pip install -r requirements-dev.txt
       - name: Contract and risk engine tests
         run: python -m pytest -q nodes/tests
       - name: Risk engine selftest

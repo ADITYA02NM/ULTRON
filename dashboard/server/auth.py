@@ -53,22 +53,56 @@ SESSION_TTL = 3600  # 1 hour
 _rate: dict[str, list[float]] = defaultdict(list)
 _RATE_WINDOW = 300  # 5 minutes
 _RATE_MAX = 5
+_RATE_SWEEP_AT = 512  # sweep the table once it holds this many sources
+_RATE_MAX_SOURCES = 4096  # hard ceiling on tracked sources
+_rate_audited: dict[str, float] = {}  # ip -> when we last logged a rejection
 
 
 def reset_rate_limits() -> None:
     _rate.clear()
+    _rate_audited.clear()
+
+
+def _sweep_rate(now: float) -> None:
+    """Drop sources that have been quiet for a full window.
+
+    Without this the table holds one entry per source address forever, so an
+    attacker rotating through an IPv6 /64 — or just a busy network — grows it
+    without bound.
+    """
+    stale = [ip for ip, ts in _rate.items()
+             if not ts or now - ts[-1] >= _RATE_WINDOW]
+    for ip in stale:
+        _rate.pop(ip, None)
+        _rate_audited.pop(ip, None)
+    # Sweeping only helps once sources go quiet. If a flood has many sources
+    # active at the same instant, none of them are stale, so evict the coldest
+    # until the table is back inside its ceiling.
+    overflow = len(_rate) - _RATE_MAX_SOURCES
+    if overflow > 0:
+        oldest = sorted(_rate, key=lambda ip: _rate[ip][-1] if _rate[ip] else 0.0)
+        for ip in oldest[:overflow]:
+            _rate.pop(ip, None)
+            _rate_audited.pop(ip, None)
 
 
 def _check_rate(ip: str, auth_db: AuthDB) -> bool:
     now = time.time()
-    attempts = _rate[ip]
-    _rate[ip] = [t for t in attempts if now - t < _RATE_WINDOW]
-    if len(_rate[ip]) >= _RATE_MAX:
-        backoff = 2 ** (len(_rate[ip]) - _RATE_MAX)
-        if _rate[ip] and (now - _rate[ip][-1]) < backoff:
-            auth_db.audit("rate_limited", ip=ip)
+    if len(_rate) >= _RATE_SWEEP_AT:
+        _sweep_rate(now)
+    recent = [t for t in _rate[ip] if now - t < _RATE_WINDOW]
+    _rate[ip] = recent
+    if len(recent) >= _RATE_MAX:
+        backoff = 2 ** (len(recent) - _RATE_MAX)
+        if recent and (now - recent[-1]) < backoff:
+            # Record the rejection once per window per source. Writing a row for
+            # every attempt turns the audit trail into a disk-fill vector — the
+            # attacker gets to choose how much we write.
+            if now - _rate_audited.get(ip, 0.0) >= _RATE_WINDOW:
+                auth_db.audit("rate_limited", ip=ip)
+                _rate_audited[ip] = now
             return False
-    _rate[ip].append(now)
+    recent.append(now)
     return True
 
 
@@ -226,7 +260,9 @@ async def handle_setup_complete(request: web.Request) -> web.Response:
         )
     except Exception as e:
         auth_db.audit("setup_verify_failed", ip=request.remote, detail=str(e))
-        raise web.HTTPBadRequest(text=f"Verification failed: {e}") from e
+        # The detail goes to the audit trail, not to the caller: raw exception
+        # text leaks library internals and filesystem paths.
+        raise web.HTTPBadRequest(text="Verification failed") from e
 
     cred_id = bytes_to_base64url(verification.credential_id)
     auth_db.save_credential(
@@ -309,7 +345,7 @@ async def handle_register_complete(request: web.Request) -> web.Response:
         )
     except Exception as e:
         auth_db.audit("register_verify_failed", ip=request.remote, detail=str(e))
-        raise web.HTTPBadRequest(text=f"Verification failed: {e}") from e
+        raise web.HTTPBadRequest(text="Verification failed") from e
 
     cred_id = bytes_to_base64url(verification.credential_id)
     auth_db.save_credential(
@@ -399,7 +435,7 @@ async def handle_login_complete(request: web.Request) -> web.Response:
     except Exception as e:
         auth_db.audit("login_verify_failed", ip=ip,
                       credential_id=raw_id, detail=str(e))
-        raise web.HTTPUnauthorized(text=f"Verification failed: {e}") from e
+        raise web.HTTPUnauthorized(text="Verification failed") from e
 
     # Step 5: Counter rule
     new_count = verification.new_sign_count
@@ -481,8 +517,18 @@ async def handle_revoke_credential(request: web.Request) -> web.Response:
     if not auth_db.revoke_credential(cred_id):
         raise web.HTTPNotFound(text="Credential not found or already revoked")
 
-    auth_db.audit("credential_revoked", ip=request.remote, credential_id=cred_id)
-    return web.json_response({"status": "ok"})
+    # Revoking the credential must also end what it authorised. Otherwise the
+    # device you just revoked keeps its dashboard session, and any socket it
+    # holds keeps streaming, until the session TTL happens to expire.
+    ended = auth_db.revoke_sessions_for_credential(cred_id)
+    session_mgr = request.app.get("session_mgr")
+    if session_mgr is not None:
+        for sid_hash in ended:
+            await session_mgr.close_session_sockets(sid_hash)
+
+    auth_db.audit("credential_revoked", ip=request.remote, credential_id=cred_id,
+                  detail=f"sessions_revoked={len(ended)}")
+    return web.json_response({"status": "ok", "sessions_revoked": len(ended)})
 
 
 # ── Demo / LAN access + skip (optional escape hatches) ───────────────────── #

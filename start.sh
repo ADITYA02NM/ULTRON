@@ -177,8 +177,13 @@ if [ -z "$DEMO_CODE" ] && [ -f "$DEMO_CODE_FILE" ]; then
   DEMO_CODE="$(cat "$DEMO_CODE_FILE" 2>/dev/null || true)"
 fi
 if [ -z "$DEMO_CODE" ]; then
-  DEMO_CODE="$(od -An -N4 -tx4 /dev/urandom | tr -d ' \n' | tr 'a-f' 'A-F')"
+  # 128 bits, grouped so it stays readable when copied off the banner by hand.
+  # The original 4-byte code carried only 32 bits — thin for something the docs
+  # describe as a shared secret, even behind the 5-per-5-minutes limiter.
+  _code_hex="$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n' | tr 'a-f' 'A-F')"
+  DEMO_CODE="${_code_hex:0:16}-${_code_hex:16:16}"
   printf '%s' "$DEMO_CODE" > "$DEMO_CODE_FILE"
+  chmod 600 "$DEMO_CODE_FILE" 2>/dev/null || true
 fi
 
 # Pick this machine's real LAN address. A container/VM bridge (docker0, br-*,
