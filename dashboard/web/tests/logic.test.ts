@@ -3,7 +3,9 @@ import { bandForScore, isWorse, bandRank } from "../src/lib/bands";
 import { LatencyWindow, ClockSync } from "../src/lib/latency";
 import { isEnvelope, isPong } from "../src/contracts/ws";
 import { Store } from "../src/store/store";
-import { filterHistory } from "../src/components/History";
+import {
+  eventsNear, filterHistory, fracAt, pickAt, toleranceSec,
+} from "../src/components/History";
 import type { Envelope } from "../src/contracts/ws";
 
 const env = (t: string, d: unknown, ts = Date.now() / 1000): Envelope =>
@@ -269,5 +271,75 @@ describe("stored view preferences", () => {
     expect(s.getState().showDevices).toBe(false);
     expect(s.getState().selectedDevice).toBeNull();
     expect(s.getState().focusNode).toBeNull();
+  });
+});
+
+describe("history hover", () => {
+  // 1000, 1010, 1030, 1060 — unevenly spaced on purpose, the way a real feed
+  // arrives, so a test cannot pass by assuming a regular step.
+  const pts: Array<[number, number]> = [
+    [1000, 10],
+    [1010, 40],
+    [1030, 70],
+    [1060, 90],
+  ];
+
+  it("maps a fraction of the plot back to the nearest sample", () => {
+    expect(pickAt(pts, 1000, 60, 0)!.ts).toBe(1000);
+    expect(pickAt(pts, 1000, 60, 1)!.ts).toBe(1060);
+    // a quarter in is t=1015, whose nearest neighbours are 1010 and 1030 — 5
+    // beats 15, so the earlier one wins
+    expect(pickAt(pts, 1000, 60, 0.25)!.value).toBe(40);
+    const mid = pickAt(pts, 1000, 60, 0.5)!;
+    expect(mid.ts).toBe(1030);
+    expect(mid.index).toBe(2);
+    expect(mid.value).toBe(70);
+  });
+
+  it("clamps a fraction outside the plot instead of falling off the end", () => {
+    expect(pickAt(pts, 1000, 60, -3)!.ts).toBe(1000);
+    expect(pickAt(pts, 1000, 60, 9)!.ts).toBe(1060);
+  });
+
+  it("returns nothing for an empty series", () => {
+    expect(pickAt([], 1000, 60, 0.5)).toBeNull();
+  });
+
+  it("fracAt inverts pickAt, so a keypress lands where a pointer would", () => {
+    for (let i = 0; i < pts.length; i++) {
+      expect(pickAt(pts, 1000, 60, fracAt(pts, 1000, 60, i))!.index).toBe(i);
+    }
+    expect(fracAt(pts, 1000, 60, 99)).toBe(0);
+  });
+
+  it("scales the tolerance with the zoom so the promise holds at any range", () => {
+    // 24h across 600px: a pixel is 144s, so six of them is 864s of slop
+    expect(toleranceSec(86400, 600)).toBeCloseTo(864, 5);
+    // an hour across the same width: 36s
+    expect(toleranceSec(3600, 600)).toBeCloseTo(36, 5);
+    // a live drill spans 90s, which at six pixels would be under a second —
+    // the floor is what keeps that usable
+    expect(toleranceSec(90, 600)).toBe(10);
+    // a zero-width canvas must not divide by zero
+    expect(toleranceSec(3600, 0)).toBe(21600);
+  });
+
+  it("keeps only what happened at that time, newest first and capped", () => {
+    const evs = [
+      { id: "a", ts: 1000 },
+      { id: "b", ts: 1005 },
+      { id: "c", ts: 1030 },
+      { id: "d", ts: 2000 },
+    ];
+    expect(eventsNear(evs, 1030, 30, 5).map((e) => e.id)).toEqual(["c", "b", "a"]);
+    expect(eventsNear(evs, 1030, 30, 1).map((e) => e.id)).toEqual(["c"]);
+    // a moment with nothing near it is nothing, not an implied calm stretch
+    expect(eventsNear(evs, 1500, 30, 5)).toEqual([]);
+  });
+
+  it("does not mutate the event list it was given", () => {
+    const evs = [{ id: "a", ts: 1000 }, { id: "b", ts: 1060 }];
+    eventsNear(evs, 1030, 30, 5);
+    expect(evs.map((e) => e.id)).toEqual(["a", "b"]);
   });
 });

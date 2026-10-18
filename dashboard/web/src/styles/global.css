@@ -508,6 +508,31 @@ canvas.spark-live { box-shadow: inset 0 0 0 1px var(--accent-line); }
 .hist-range-btn:hover { color: var(--text); border-color: var(--border); }
 .hist-range-btn.active { color: var(--accent); border-color: var(--accent-line); }
 
+/* Hover readout on the risk line. The rule and the dot are painted into the
+   canvas; the events are DOM so they can wrap and be read out loud. Anchored to
+   one side or the other so a crowded panel never pushes it out of the box. */
+.hist-wrap { position: relative; }
+canvas.spark { cursor: crosshair; }
+canvas.spark:focus-visible { outline: 1px solid var(--accent-line); outline-offset: 0; }
+.hist-tip {
+  position: absolute; top: var(--space-1); z-index: var(--intel-z);
+  display: flex; flex-direction: column; gap: 1px;
+  max-width: var(--intel-w); padding: var(--space-1) var(--space-2);
+  background: var(--panel-2); border: 1px solid var(--border-2); border-radius: var(--radius);
+  font-family: var(--mono); font-size: var(--fs-xs); color: var(--text);
+  pointer-events: none;
+}
+.hist-tip.left { left: 0; }
+.hist-tip.right { right: 0; }
+.hist-tip-hd { display: flex; gap: var(--space-2); color: var(--muted); }
+.hist-tip-ev { display: flex; gap: var(--space-1); }
+.hist-tip-s { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hist-tip-none { color: var(--muted-2); }
+.hist-sev.sev-green, .hist-sev.sev-info { color: var(--green); }
+.hist-sev.sev-yellow, .hist-sev.sev-warn { color: var(--yellow); }
+.hist-sev.sev-red, .hist-sev.sev-critical { color: var(--red); }
+.hist-sev.sev-purple { color: var(--purple); }
+
 /* ---- live drill ---- */
 .live-tag {
   font-family: var(--mono); font-size: var(--fs-2xs); letter-spacing: .08em; text-transform: uppercase;

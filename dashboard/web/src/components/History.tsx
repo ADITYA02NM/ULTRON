@@ -1,4 +1,5 @@
-import { memo, useEffect, useRef } from "react";
+import { memo, useEffect, useRef, useState } from "react";
+import type { UEvent } from "../store/store";
 import { store, useStore } from "../store/store";
 import { bandForScore } from "../lib/bands";
 import { cssVar } from "../lib/cssVars";
@@ -6,6 +7,12 @@ import { cssVar } from "../lib/cssVars";
 export type HistoryRange = "1h" | "6h" | "24h";
 
 const RANGES: HistoryRange[] = ["1h", "6h", "24h"];
+
+/** How many events the hover readout will list before it gives up. */
+const TIP_MAX = 5;
+
+/** Held high so the readout never re-renders from sensor traffic. */
+const NO_EVENTS: UEvent[] = [];
 
 /** Pure range filter over [tsSec, value] points. Exported for tests. */
 export function filterHistory(
@@ -28,11 +35,81 @@ export function filterHistory(
  */
 export const LIVE_WINDOW_S = 90;
 
+/** A sample of the line, and where it sits in the plotted array. */
+export type HoverPick = { index: number; ts: number; value: number };
+
+/**
+ * The sample nearest a horizontal fraction of the plot, where 0 is the left
+ * edge and 1 the right. Pure, and the inverse of `fracAt`. Exported for tests.
+ */
+export function pickAt(
+  points: Array<[number, number]>,
+  t0: number,
+  span: number,
+  frac: number,
+): HoverPick | null {
+  if (!points.length) return null;
+  const clamped = Math.min(1, Math.max(0, frac));
+  const target = t0 + clamped * Math.max(1, span);
+  let best = 0;
+  let bestD = Math.abs(points[0]![0] - target);
+  for (let i = 1; i < points.length; i++) {
+    const d = Math.abs(points[i]![0] - target);
+    if (d < bestD) { bestD = d; best = i; }
+  }
+  return { index: best, ts: points[best]![0], value: points[best]![1] };
+}
+
+/** The fraction a sample sits at. Out-of-range indexes report the left edge. */
+export function fracAt(
+  points: Array<[number, number]>,
+  t0: number,
+  span: number,
+  index: number,
+): number {
+  const p = points[index];
+  if (!p) return 0;
+  return Math.min(1, Math.max(0, (p[0] - t0) / Math.max(1, span)));
+}
+
+/**
+ * How far either side of the cursor still counts as "at that time".
+ *
+ * A fixed number of seconds would be unfindable at range: across a 24 h window
+ * one pixel is minutes, so six pixels of slop is minutes too, and the promise
+ * "what happened here" stays honest at every zoom. The floor keeps a tight
+ * window — a live drill spans 90 s — from collapsing to nothing to hit.
+ */
+export function toleranceSec(spanSec: number, widthPx: number): number {
+  return Math.max(10, (spanSec / Math.max(1, widthPx)) * 6);
+}
+
+/** Events inside the tolerance window, newest first, capped. */
+export function eventsNear<T extends { ts: number }>(
+  events: T[],
+  ts: number,
+  tolSec: number,
+  max: number,
+): T[] {
+  return events
+    .filter((e) => Math.abs(e.ts - ts) <= tolSec)
+    .sort((a, b) => b.ts - a.ts)
+    .slice(0, max);
+}
+
+/** UTC clock, the same convention the event feed uses. */
+function clockOf(ts: number): string {
+  return new Date(ts * 1000).toISOString().slice(11, 19);
+}
+
 /** The stretch beat in ms, read from the token sheet so timing has one source. */
 function beatMs(): number {
   const v = parseFloat(cssVar("--dur-live"));
   return Number.isFinite(v) && v > 0 ? v : 1100;
 }
+
+/** Geometry from the last paint, so handlers can hit-test without repainting. */
+type Geo = { pts: Array<[number, number]>; t0: number; span: number; css: number };
 
 function HistoryImpl({ compact }: { compact?: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -42,10 +119,36 @@ function HistoryImpl({ compact }: { compact?: boolean }) {
   // whatever range the operator chose.
   const live = useStore((s) => s.simRunning) && compact === true;
 
+  // The cursor lives in a ref, not in state: a live drill repaints every frame
+  // and a state update per frame would flood the tree. Only the reading itself
+  // is state, and it changes when you cross a sample.
+  const [hover, setHover] = useState<{ pick: HoverPick; tol: number; frac: number } | null>(null);
+  const cursorRef = useRef<number | null>(null);
+  const shownRef = useRef<HoverPick | null>(null);
+
+  // Only subscribe to events while the readout is open — it is capped at 500
+  // rows, so holding it unconditionally would re-render on every sensor frame.
+  const hovering = hover !== null;
+  const events = useStore((s) => (hovering ? s.events : NO_EVENTS));
+
   useEffect(() => {
     let raf = 0;
     let looping = false;
     let size = "";
+    let geo: Geo | null = null;
+
+    let lastFrac = 0;
+    const publish = (p: HoverPick | null) => {
+      const prev = shownRef.current;
+      if (!p && !prev) return;
+      // Same sample as last paint: nothing moved, so nothing re-renders.
+      if (p && prev && p.index === prev.index && p.ts === prev.ts) return;
+      shownRef.current = p;
+      if (!p) { setHover(null); return; }
+      // The tolerance and the side of the plot come from the frame that was just
+      // painted, not from the pick, so they always describe what is on screen.
+      setHover({ pick: p, tol: geo ? toleranceSec(geo.span, geo.css) : 10, frac: lastFrac });
+    };
 
     const paint = (t: number) => {
       const c = canvasRef.current; if (!c) return;
@@ -78,6 +181,8 @@ function HistoryImpl({ compact }: { compact?: boolean }) {
         if (noteRef.current) {
           noteRef.current.textContent = isLive ? "live — waiting for samples" : "history empty — skeleton";
         }
+        geo = null;
+        publish(null);
         return;
       }
       const lastV = hist[hist.length - 1]![1];
@@ -114,6 +219,26 @@ function HistoryImpl({ compact }: { compact?: boolean }) {
         ctx.fillRect(headX - r, headY - r, r * 2, r * 2);
       }
       ctx.globalAlpha = 1;
+
+      geo = { pts: hist, t0, span, css: c.clientWidth || 1 };
+      // Where the cursor is, resolved against this frame's data — so during a
+      // live drill the rule stays over the same moment as the line scrolls
+      // under it rather than over the same pixel.
+      const cur = cursorRef.current;
+      const hit = cur === null ? null : pickAt(hist, t0, span, cur);
+      if (hit) {
+        lastFrac = cur === null ? 0 : Math.min(1, Math.max(0, cur));
+        const px = ((hit.ts - t0) / span) * w;
+        const py = h - (hit.value / 100) * h;
+        ctx.strokeStyle = cssVar("--muted");
+        ctx.lineWidth = dpr;
+        ctx.setLineDash([2 * dpr, 2 * dpr]);
+        ctx.beginPath(); ctx.moveTo(px, 0); ctx.lineTo(px, h); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = cssVar("--text");
+        ctx.beginPath(); ctx.arc(px, py, 2.5 * dpr, 0, Math.PI * 2); ctx.fill();
+      }
+      publish(hit);
     };
 
     const loop = (t: number) => { paint(t); raf = requestAnimationFrame(loop); };
@@ -126,19 +251,91 @@ function HistoryImpl({ compact }: { compact?: boolean }) {
       cancelAnimationFrame(raf); raf = 0;
       paint(performance.now());
     };
+    // While the loop runs the next frame picks the cursor up on its own; when it
+    // is parked this is what makes the cursor move at all.
+    const nudge = () => { if (!looping) sync(); };
+
+    const onMove = (ev: PointerEvent) => {
+      const c = canvasRef.current;
+      const r = c && geo && geo.pts.length ? c.getBoundingClientRect() : null;
+      if (!r || !r.width) return;
+      cursorRef.current = Math.min(1, Math.max(0, (ev.clientX - r.left) / r.width));
+      nudge();
+    };
+    const onLeave = () => {
+      if (cursorRef.current === null) return;
+      cursorRef.current = null;
+      nudge();
+    };
+    const onKey = (ev: KeyboardEvent) => {
+      if (!geo || !geo.pts.length) return;
+      const n = geo.pts.length;
+      const at = cursorRef.current === null ? null : pickAt(geo.pts, geo.t0, geo.span, cursorRef.current);
+      let i = at ? at.index : n - 1;
+      if (ev.key === "ArrowLeft") i = Math.max(0, i - 1);
+      else if (ev.key === "ArrowRight") i = Math.min(n - 1, i + 1);
+      else if (ev.key === "Home") i = 0;
+      else if (ev.key === "End") i = n - 1;
+      else if (ev.key === "Escape") { onLeave(); return; }
+      else return;
+      ev.preventDefault();
+      cursorRef.current = fracAt(geo.pts, geo.t0, geo.span, i);
+      nudge();
+    };
 
     const unsub = store.subscribe(sync);
     sync();
+    const c = canvasRef.current;
+    c?.addEventListener("pointermove", onMove);
+    c?.addEventListener("pointerleave", onLeave);
+    c?.addEventListener("blur", onLeave);
+    c?.addEventListener("keydown", onKey);
     window.addEventListener("resize", sync);
     return () => {
       unsub(); looping = false; cancelAnimationFrame(raf);
+      cursorRef.current = null; shownRef.current = null;
+      c?.removeEventListener("pointermove", onMove);
+      c?.removeEventListener("pointerleave", onLeave);
+      c?.removeEventListener("blur", onLeave);
+      c?.removeEventListener("keydown", onKey);
       window.removeEventListener("resize", sync);
     };
   }, [compact]);
 
+  const near = hover ? eventsNear(events, hover.pick.ts, hover.tol, TIP_MAX) : [];
+
   return (
-    <div className={compact ? "hist-compact" : ""}>
-      <canvas className={`spark${compact ? " spark-compact" : ""}${live ? " spark-live" : ""}`} ref={canvasRef} />
+    <div className={"hist-wrap" + (compact ? " hist-compact" : "")}>
+      <canvas
+        className={`spark${compact ? " spark-compact" : ""}${live ? " spark-live" : ""}`}
+        ref={canvasRef}
+        tabIndex={0}
+        role="img"
+        aria-label={`Risk score over the last ${compact && live ? "90 seconds" : range}. Hover, or use the arrow keys, to see what happened at a moment.`}
+      />
+      {hover && (
+        <div className={"hist-tip" + (hover.frac < 0.5 ? " left" : " right")} role="status">
+          <div className="hist-tip-hd">
+            <span className="num">{clockOf(hover.pick.ts)}</span>
+            <span className={"hist-sev sev-" + bandForScore(hover.pick.value).toLowerCase()}>
+              {hover.pick.value}
+            </span>
+          </div>
+          {near.length === 0 ? (
+            // The store keeps only the most recent events, so a stretch further
+            // back than that is genuinely unknown rather than quiet. Say so.
+            <div className="hist-tip-none">no events retained for this moment</div>
+          ) : (
+            near.map((e) => (
+              <div className="hist-tip-ev" key={e.id}>
+                <span className="num">{clockOf(e.ts)}</span>
+                <span className={"hist-sev sev-" + e.sev}>{e.kind}</span>
+                <span className="hist-tip-s">{e.summary}</span>
+              </div>
+            ))
+          )}
+        </div>
+      )}
       {!compact && <div className="histnote" ref={noteRef}>awaiting history…</div>}
       {compact && <div className="histnote" ref={noteRef} />}
       {compact && !live && (
