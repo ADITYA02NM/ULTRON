@@ -262,6 +262,12 @@ export class Store {
           }
           break;
         }
+        case "sim": {
+          // Drill state belongs to the server, so every operator's button agrees
+          // and a reload shows a drill that is genuinely still running.
+          s.simRunning = Boolean((env.d as { running?: boolean }).running);
+          break;
+        }
         case "history": {
           s.history = (env.d as { points: Array<[number, number]> }).points.slice();
           if (s.history.length) s.score = s.history[s.history.length - 1]![1];

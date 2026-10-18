@@ -39,6 +39,17 @@ export class Transport {
     }
   }
 
+  /**
+   * Ask the server to run or stop the sensor drill. The drill is server state:
+   * its beats go over MQTT like a real sensor's, so the vault, the band and the
+   * notifier all see them. Nothing here fabricates events locally.
+   */
+  sendSim(action: "start" | "stop" | "status", script = "stress"): void {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({ sim: action, script }));
+    }
+  }
+
   private connect(): void {
     if (this.stopped) return;
     let ws: WebSocket;

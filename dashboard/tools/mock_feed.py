@@ -21,6 +21,12 @@ the beats, the endpoint roster and the wording of the two files in step.
 The peak is YELLOW. Most devices are healthy the whole time: this is a home
 under watch, not a system falling apart.
 
+There is a second script, `stress`, which narrates a real incident instead —
+reconnaissance, a C2 beacon, a successful exploit, then lateral movement into
+the governance node. It reaches RED and PURPLE, which `demo` structurally
+cannot: demo's score tops out at 38, while RED needs 60 and PURPLE 85. Run it
+to exercise the band chips, the ESP32 indicator and Pi3b's notification path.
+
 This mock plays the role of BOTH the detection nodes AND the Pi4 risk engine (it
 publishes ultron/risk/# too), and it also answers ultron/ack/# exactly the way
 Pi3b does, so a laptop with no Pis sees the complete, working dashboard. On real
@@ -30,6 +36,8 @@ To watch the header go STALE/OFFLINE, stop the broker while this is running.
 
 Usage:
     python mock_feed.py --host 127.0.0.1 --port 1883 [--user dev --pass dev]
+    python mock_feed.py --script stress            # every detector, RED and PURPLE
+    python mock_feed.py --script stress --cycles 1 # one pass, then exit
 """
 
 from __future__ import annotations
@@ -377,15 +385,243 @@ def play_cycle(feed: Feed, n: int, score: int = 0) -> int:
     return c.score
 
 
-def run(feed: Feed) -> None:
-    print("  beats mirror dashboard/web/src/lib/simulation.ts — keep them in step.")
+# The `stress` script's cycle clock, in ms. It is deliberately shorter than
+# CYCLE_MS because it carries roughly three times the beats: the point is to
+# exercise every detector in one pass.
+STRESS_MS = 56000
+
+
+def play_stress(feed: Feed, n: int, score: int = 0) -> int:
+    """One dense drill: every event kind, all the way through RED and PURPLE.
+
+    `play_cycle` is the honest story — a home under watch — and it peaks at
+    YELLOW, so a laptop-only run can NEVER show a RED or PURPLE band (they need
+    a score of 60 and 85; demo tops out at 38). That leaves the band chips, the
+    gauge, the ESP32 indicator and Pi3b's notification path untested.
+
+    This one narrates an actual incident — reconnaissance, a beacon, a
+    successful exploit, then lateral movement into the governance node — and
+    lets the score follow the story. Every alert kind the dashboard can render
+    appears at least once, so a single pass covers the whole UI.
+    """
+    c = Cycle(feed, n, score)
+    cam, plug, door = LAN_DEVICES
+
+    feed.alerts.clear()
+    for dev in LAN_DEVICES:
+        c.lan(dev)
+
+    # -- Phase A: the roster reports in --------------------------------------
+
+    def a_pi4() -> None:
+        c.lan(LAN_HOUSE)
+        c.alert("info", "Pi4 governance online", "health/pi4",
+                "192.168.100.1 — mosquitto, risk engine and dashboard up. Watchdog armed.")
+
+    def a_camera() -> None:
+        c.lan(cam)
+        c.alert("info", f"{cam['label']} checked in", "detect/lan",
+                f"{cam['vendor']} {cam['ip']} — 1080p stream healthy, RTSP 554 open, uptime 6 d.")
+
+    def a_plug() -> None:
+        c.lan(plug)
+        c.alert("info", f"{plug['label']} reported in", "detect/lan",
+                f"{plug['vendor']} {plug['ip']} — relay closed, drawing 11 W, Wi-Fi −54 dBm.")
+
+    def a_door() -> None:
+        c.lan(door)
+        c.alert("info", f"{door['label']} paired", "detect/lan",
+                f"{door['label']} {door['ip']} — front door contact, battery 92%, last event 3 h ago.")
+
+    def a_node() -> None:
+        c.alert("info", "Detection node online", "health/pi3a",
+                "192.168.100.2 — Suricata 26,140 signatures loaded, LAN observer on eth0. No drops.")
+
+    # -- Phase B: ordinary household activity --------------------------------
+
+    def b_open() -> None:
+        c.alert("info", "Front door opened", "detect/lan",
+                f"{door['label']} {door['ip']} — contact opened, resident arriving home.")
+
+    def b_close() -> None:
+        c.alert("info", "Front door closed", "detect/lan",
+                f"{door['label']} {door['ip']} — contact closed after 5 s, battery unchanged at 92%.")
+
+    def b_kettle() -> None:
+        c.target = 12
+        c.alert("info", f"{plug['label']} load changed", "detect/lan",
+                f"{plug['label']} {plug['ip']} — draw 11 W → 46 W, kettle switched on.")
+
+    def b_join() -> None:
+        c.lan(LAN_PHONE, known=False)
+        c.alert("info", "Unfamiliar device joined", "detect/lan",
+                "AA:BB:CC:DD:EE:FF · 192.168.100.57 — first seen on the LAN, watching before trusting.")
+
+    def b_identify() -> None:
+        c.lan(LAN_PHONE, known=True)
+        c.alert("info", "Unfamiliar device identified", "detect/lan",
+                "AA:BB:CC:DD:EE:FF resolved to a household iPhone on the guest SSID — marked known.")
+
+    # -- Phase C: YELLOW — reconnaissance ------------------------------------
+
+    def y_probe() -> None:
+        c.target = 38
+        feed.pub("ultron/suricata/cam-default-creds",
+                 {"signature": "ET SCAN default credential probe",
+                  "severity": "yellow", "src": "suricata/eth0",
+                  "src_ip": LAN_PHONE["ip"], "dest_ip": cam["ip"],
+                  "sig_id": 2010935, "mac": cam["mac"]})
+        c.alert("yellow", f"{cam['label']} probed for default credentials", "detect/suricata",
+                f"192.168.100.57 → {cam['ip']} — 14 login attempts to the camera web UI in 30 s.")
+
+    def y_rejected() -> None:
+        c.alert("info", "Probe rejected", "detect/suricata",
+                f"All 14 attempts failed — {cam['label']} is not on default credentials. No access gained.")
+
+    def y_firmware() -> None:
+        c.target = 46
+        c.alert("yellow", f"{cam['label']} firmware is stale", "detect/lan",
+                f"{cam['vendor']} {cam['ip']} — firmware v5.6.2, 14 months old, 3 known CVEs unpatched.")
+        c.alert("yellow", "Indicator reading YELLOW", "health/esp32",
+                "ESP32-C3 OLED YELLOW — advisory only, no operator action required yet.")
+
+    # -- Phase D: RED — it got in --------------------------------------------
+
+    def r_beacon() -> None:
+        c.target = 68
+        feed.pub("ultron/suricata/cam-c2-beacon",
+                 {"signature": "ET TROJAN Possible C2 Beacon (POST)",
+                  "severity": "red", "src": "suricata/eth0",
+                  "src_ip": cam["ip"], "dest_ip": "203.0.113.44",
+                  "sig_id": 2027751, "mac": cam["mac"]})
+        c.alert("red", f"{cam['label']} beaconing to an unknown host", "detect/suricata",
+                f"{cam['ip']} → 203.0.113.44:8443 — 60 s jitter, 312 B POSTs, TLS certificate "
+                "4 days old. Pattern matches command-and-control.")
+
+    def r_unsigned() -> None:
+        c.target = 76
+        c.alert("red", f"{plug['label']} fetched unsigned firmware", "detect/lan",
+                f"{plug['ip']} — 2.4 MB image pulled over plain HTTP from ota-cdn.lan with no "
+                "signature. The device is now running code its vendor never published.")
+
+    def r_cve() -> None:
+        c.target = 82
+        c.alert("red", f"{cam['label']} exploit attempt succeeded", "detect/suricata",
+                "CVE-2021-36260 — 1 of 14 crafted requests returned HTTP 200 with a shell banner. "
+                "Treating the camera as compromised.")
+        c.alert("red", "Indicator reading RED", "health/esp32",
+                "ESP32-C3 OLED RED, LED solid — operator attention required.")
+
+    # -- Phase E: PURPLE — it spread -----------------------------------------
+
+    def p_lateral() -> None:
+        c.target = 88
+        feed.pub("ultron/suricata/lateral-ssh",
+                 {"signature": "ET SCAN SSH Brute Force from IoC Host",
+                  "severity": "purple", "src": "suricata/eth0",
+                  "src_ip": cam["ip"], "dest_ip": "192.168.100.2",
+                  "sig_id": 2001219, "mac": cam["mac"]})
+        c.alert("purple", "Lateral movement: camera → Pi4", "detect/suricata",
+                f"{cam['ip']} → 192.168.100.2:22 — 240 authentication attempts in 40 s against the "
+                "governance node. Dropped by the nftables set on the third retry.")
+
+    def p_exfil() -> None:
+        c.target = 94
+        c.alert("purple", "Credential harvest attempt on Pi4", "detect/suricata",
+                "The camera's session tried to write /etc/shadow and ~/.ssh/authorized_keys. "
+                "Both denied — the API surface is read-only and the audit log is append-only.")
+
+    def p_contain() -> None:
+        c.target = 90
+        c.alert("purple", "Containment: camera quarantined", "health/pi4",
+                f"{cam['ip']} moved to the quarantine VLAN, DNS sinkholed, RTSP credentials "
+                "revoked. Lateral path closed; the rest of the home is unaffected.")
+
+    # -- Phase F: wind down ---------------------------------------------------
+
+    def z_ack() -> None:
+        for aid, payload in list(feed.alerts.items()):
+            if not payload.get("ack"):
+                feed.pub(f"ultron/ack/{aid}", {"id": aid})
+
+    def z_decay() -> None:
+        c.target = 10
+
+    def z_heartbeat() -> None:
+        c.alert("info", "Pi3a heartbeat steady", "health/pi4",
+                "Detection node reporting every 4 s, Suricata drop rate 0 %.")
+
+    def z_refresh() -> None:
+        feed.lan_all()
+        c.lan(LAN_HOUSE)
+        c.lan(LAN_PHONE)
+
+    def z_indicator() -> None:
+        c.alert("info", "Indicator reading GREEN", "health/esp32",
+                "ESP32-C3 OLED GREEN, LED steady — incident closed, no operator action required.")
+
+    def z_nominal() -> None:
+        c.alert("info", "All endpoints nominal", "health/pi4",
+                "7/7 nodes healthy · 1 endpoint quarantined · 0 open critical. Watch continues.")
+
+    beats = (
+        (0, lambda: c.alert("info", "Watch started — incident drill", "risk/engine",
+                            f"Stress cycle {n} beginning. Scoring from {c.score}. "
+                            "Reconnaissance, compromise and lateral movement, all in one pass.")),
+        (1000, a_pi4),
+        (1800, a_camera),
+        (2600, a_plug),
+        (3400, a_door),
+        (4200, a_node),
+        (5000, b_open),
+        (5800, b_close),
+        (6600, b_kettle),
+        (7000, b_join),
+        (7500, b_identify),
+        (8000, y_probe),
+        (14000, y_rejected),
+        (16000, y_firmware),
+        (20000, r_beacon),
+        (26000, r_unsigned),
+        (30000, r_cve),
+        (33000, p_lateral),
+        (37000, p_exfil),
+        (40000, p_contain),
+        (43000, z_ack),
+        (44500, z_decay),
+        (46000, z_heartbeat),
+        (47500, z_refresh),
+        (49000, z_indicator),
+        (51000, z_nominal),
+        (52500, z_ack),
+        (54000, z_refresh),
+        (54500, lambda: c.alert("info", "Drill complete — restarting", "risk/engine",
+                                "Incident closed and acknowledged. Beginning the next sweep.")),
+    )
+
+    for at_ms, fn in beats:
+        c.at(at_ms, fn)
+
+    c.at(STRESS_MS, lambda: None)
+    return c.score
+
+
+def run(feed: Feed, script: str = "demo", cycles: int = 0) -> None:
+    if script == "stress":
+        print("  STRESS script: every detector, all bands through PURPLE.")
+    else:
+        print("  beats mirror dashboard/web/src/lib/simulation.ts — keep them in step.")
     print("  to watch STALE/OFFLINE, stop the broker while this runs.")
+    play = play_stress if script == "stress" else play_cycle
     n = 0
     score = 0
     while True:
         n += 1
         print(f"\n================ cycle {n} ================")
-        score = play_cycle(feed, n, score)
+        score = play(feed, n, score)
+        if cycles and n >= cycles:
+            print(f"\nstopping after {n} cycle(s) — --cycles {cycles}.")
+            break
 
 
 def main() -> None:
@@ -394,14 +630,18 @@ def main() -> None:
     ap.add_argument("--port", type=int, default=1883)
     ap.add_argument("--user", default=None)
     ap.add_argument("--pass", dest="password", default=None)
-    ap.add_argument("--script", default="demo", choices=["demo"],
-                    help="scenario to replay (mirrors the browser simulation)")
+    ap.add_argument("--script", default="demo", choices=["demo", "stress"],
+                    help="scenario to replay: demo mirrors the browser simulation and "
+                         "peaks at YELLOW; stress exercises every detector and reaches "
+                         "RED and PURPLE")
+    ap.add_argument("--cycles", type=int, default=0,
+                    help="stop after N cycles instead of looping forever (0 = forever)")
     args = ap.parse_args()
 
     print(BANNER)
     feed = Feed(args.host, args.port, args.user, args.password)
     try:
-        run(feed)
+        run(feed, args.script, args.cycles)
     except KeyboardInterrupt:
         print("\nstopping mock feed.")
     finally:

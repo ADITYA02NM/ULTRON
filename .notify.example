@@ -1,0 +1,82 @@
+# ULTRON notification configuration.
+#
+#   cp .notify.example .notify
+#   chmod 600 .notify
+#
+# .notify is gitignored and stays on this machine. Every value can also be
+# exported in the environment, and the environment wins over this file — useful
+# for CI, or for a systemd unit that reads its secrets from elsewhere:
+#
+#   ULTRON_SMTP_HOST  ULTRON_SMTP_PORT  ULTRON_SMTP_USER
+#   ULTRON_SMTP_PASS  ULTRON_MAIL_FROM  ULTRON_MAIL_TO
+#   ULTRON_PUSH_URL   ULTRON_PUSH_TOPIC ULTRON_PUSH_BANDS
+#
+# Both channels are optional and independent. With neither configured the alert
+# manager still runs: it records every alert and every band change to the
+# evidence vault and logs "[mail suppressed]" / "[push suppressed]" instead of
+# sending. A notification is layered on top of the record, never a prerequisite
+# for it — a dead relay must not cost you the evidence.
+#
+# Phase 1 notifies on RED and PURPLE only. YELLOW is recorded and shown but
+# never wakes anyone: a notification that fires on YELLOW trains the operator
+# to ignore it.
+
+# --- mail ------------------------------------------------------------------
+# Port 587 with STARTTLS is what this client speaks. Port 465 (implicit TLS)
+# is NOT supported: there is no SMTP_SSL path in the node.
+SMTP_HOST=
+SMTP_PORT=587
+
+# Leave USER empty for a relay that takes no authentication (a LAN mail server,
+# or a test relay). Set it, and the client upgrades the connection with STARTTLS
+# *before* it presents the password.
+SMTP_USER=
+SMTP_PASS=
+
+MAIL_FROM=ultron@localhost
+# One or more recipients, comma- or space-separated.
+MAIL_TO=
+
+# --- push ------------------------------------------------------------------
+# An ntfy-compatible server. Leave PUSH_TOPIC empty and no push is ever sent:
+# nothing is dialled and no alert content leaves this machine.
+#
+# The topic name is the whole secret. Anyone who knows it can read your alerts,
+# so make it long and random and treat it like a password. Generate one with:
+#
+#   openssl rand -hex 16
+#
+# Point PUSH_URL at your own server (an ntfy on the Pi4) to keep alert traffic
+# on the LAN. ntfy.sh is the convenient default, and the only reason this file
+# offers it is that it works without a second machine standing up tonight.
+PUSH_URL=https://ntfy.sh
+PUSH_TOPIC=
+
+# Which bands push. Widening this to YELLOW,RED,PURPLE is fine for a demo; on a
+# wall-mounted appliance it is how you train yourself to ignore it.
+PUSH_BANDS=RED,PURPLE
+
+# --- Gmail example ---------------------------------------------------------
+# SMTP_HOST=smtp.gmail.com
+# SMTP_PORT=587
+# SMTP_USER=you@gmail.com
+# SMTP_PASS=abcd efgh ijkl mnop     # app password, never the account password
+# MAIL_TO=you@gmail.com
+#
+# Gmail wants an app password (turn on 2-Step Verification first). The account
+# password is rejected with a 535, which this client logs as
+# "could not send notification:" and otherwise ignores — by design, so a dead
+# mail relay can never stop the vault being written. Check the log, not the exit
+# code, when you rehearse.
+#
+# The relay's certificate IS verified. A self-signed LAN mail server therefore
+# needs its CA trusted by the process — point SSL_CERT_FILE at the cert, or add
+# it to the system trust store.
+
+# --- phone example ---------------------------------------------------------
+# PUSH_TOPIC=ultron-7f3c9a1e5b2d8460
+#
+# Install the ntfy app (iOS / Android), subscribe to the same topic, and a RED
+# or PURPLE band arrives as a phone notification a second or two after the
+# dashboard changes colour. Subscribe BEFORE the demo runs, and send yourself a
+# test push from the ntfy web UI to prove the app is actually receiving.

@@ -7,7 +7,7 @@ export type Severity = "green" | "info" | "yellow" | "warn" | "red" | "critical"
 
 export type EnvelopeType =
   | "alert" | "score" | "band" | "health" | "lan" | "tripwire"
-  | "history" | "toast" | "event";
+  | "history" | "toast" | "event" | "sim";
 
 export interface ScoreD { v: number; }
 export interface BandD { b: Band; }
@@ -22,6 +22,12 @@ export interface LanD {
 }
 export interface TripwireD { node: string; edge: string; }
 export interface HistoryD { points: Array<[number, number]>; }
+/** Sensor drill state. Owned by the server so every operator's button agrees. */
+export interface SimD {
+  running: boolean; script: string | null; cycles: number;
+  pid: number | null; changed?: boolean;
+  finished?: boolean; failed?: boolean; rc?: number;
+}
 export interface ToastD { msg: string; sev: string; }
 export interface EventD {
   topic: string; node: string; kind: "suricata" | "wifi";
@@ -38,7 +44,8 @@ export type PayloadFor<T extends EnvelopeType> =
   T extends "tripwire" ? TripwireD :
   T extends "history" ? HistoryD :
   T extends "toast" ? ToastD :
-  T extends "event" ? EventD : never;
+  T extends "event" ? EventD :
+  T extends "sim" ? SimD : never;
 
 export interface Envelope<T extends EnvelopeType = EnvelopeType> {
   t: T;
@@ -55,7 +62,7 @@ export type ServerControl = Pong;
 
 // Runtime guards used by the contract-check panel in debug.html and the store.
 const T_SET = new Set<EnvelopeType>([
-  "alert", "score", "band", "health", "lan", "tripwire", "history", "toast", "event",
+  "alert", "score", "band", "health", "lan", "tripwire", "history", "toast", "event", "sim",
 ]);
 
 export function isEnvelope(x: unknown): x is Envelope {

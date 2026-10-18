@@ -55,8 +55,19 @@ function HeaderImpl() {
       <div className="tag">MONITOR</div>
       <button
         className={"sim-btn" + (simRunning ? " running" : "")}
-        title={simRunning ? "Stop the demo simulation" : "Run the client-side demo simulation"}
-        onClick={() => simulation.toggle()}
+        title={simRunning
+          ? "Stop the sensor drill"
+          : "Run the sensor drill — real events, real alerts"}
+        onClick={() => {
+          if (simRunning) {
+            // Stop both: a drill on the server, and any local sim left over
+            // from the console, so the button and the truth agree again.
+            simulation.stop();
+            transport.sendSim("stop");
+          } else {
+            transport.sendSim("start", "stress");
+          }
+        }}
       >
         {simRunning ? "■ STOP" : "▶ SIMULATE"}
       </button>

@@ -33,6 +33,7 @@ from .auth import add_auth_routes
 from .auth_db import AuthDB
 from .bridge import Bridge, Hub, envelope
 from .config import Config, load
+from .sim import DEFAULT_SCRIPT, Drill
 from .ws_session import SessionWsManager
 
 LOG = logging.getLogger("ultron.main")
@@ -278,6 +279,10 @@ async def handle_ws(request: web.Request) -> web.WebSocketResponse:
         await send(envelope("alert", alert))
     await send(envelope("toast", {"msg": "MQTT LIVE" if bridge.connected else "MQTT DEGRADED",
                                   "sev": "green" if bridge.connected else "red"}))
+    # A joiner should see a drill already in progress, not a button that lies.
+    _drill = request.app.get("drill")
+    if _drill is not None:
+        await send(envelope("sim", _drill.status()))
 
     # The upgrade is a one-time check. Keep watching the session so a socket
     # cannot outlive the authority that opened it.
@@ -299,6 +304,34 @@ async def handle_ws(request: web.Request) -> web.WebSocketResponse:
                 pong = clock.make_pong(ctrl)
                 if pong is not None:
                     await send(pong)
+                continue
+            # sensor drill — authenticated sockets only (validated at upgrade).
+            # Scenario and cycle count are the only things a client may choose,
+            # and both are closed sets checked inside sim.Drill.
+            action = ctrl.get("sim")
+            if action in ("start", "stop", "status"):
+                drill = request.app.get("drill")
+                if drill is None:
+                    await send(envelope("toast", {"msg": "drill unavailable", "sev": "yellow"}))
+                else:
+                    try:
+                        if action == "start":
+                            state = await drill.start(
+                                str(ctrl.get("script") or DEFAULT_SCRIPT),
+                                ctrl.get("cycles") or 0,
+                            )
+                        elif action == "stop":
+                            state = await drill.stop()
+                        else:
+                            state = drill.status()
+                    except ValueError:
+                        await send(envelope("toast", {"msg": "unknown drill script", "sev": "yellow"}))
+                    except Exception as exc:  # noqa: BLE001
+                        LOG.warning("drill %s failed: %s", action, exc)
+                        await send(envelope("toast", {"msg": "drill failed — see server log", "sev": "red"}))
+                    else:
+                        if action == "status":
+                            await send(envelope("sim", state))
                 continue
             # operator ACK — authenticated sockets only (validated at upgrade)
             aid = ctrl.get("ack")
@@ -323,6 +356,11 @@ async def _on_startup(app: web.Application) -> None:
 
 
 async def _on_cleanup(app: web.Application) -> None:
+    # Stop the drill first: it publishes through the broker, so it must be gone
+    # before the bridge that carries its messages.
+    drill = app.get("drill")
+    if drill:
+        await drill.aclose()
     app["bridge"].stop()
     task = app.get("bridge_task")
     if task:
@@ -352,6 +390,18 @@ def create_app(cfg: Config | None = None) -> web.Application:
     app["demo_code"] = cfg.demo_code
     session_mgr = SessionWsManager()
     app["session_mgr"] = session_mgr
+
+    # The sensor drill is server state, not browser state: whoever starts it,
+    # every connected operator sees the same drill, and the beats reach MQTT
+    # (and therefore the vault and the notifier) instead of being faked in the
+    # page. One drill at a time, enforced in sim.Drill.
+    drill = Drill(cfg.mqtt_host, cfg.mqtt_port)
+
+    async def _drill_changed(payload: dict) -> None:
+        await app["hub"].broadcast(envelope("sim", payload))
+
+    drill.on_change = _drill_changed
+    app["drill"] = drill
 
     add_auth_routes(app)
 

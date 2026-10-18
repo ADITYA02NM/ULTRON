@@ -48,3 +48,9 @@ dev-evidence.db-shm
 dev-evidence.db-wal
 auth.db.bak.*
 .demo-code
+
+# Notification credentials (copy from .notify.example; never commit)
+.notify
+
+# Secrets (copy from .env.example; never commit)
+.env

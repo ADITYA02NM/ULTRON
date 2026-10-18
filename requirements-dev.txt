@@ -10,6 +10,12 @@
 pytest==8.3.3
 pytest-asyncio==0.24.0
 
+# A throwaway SMTP relay for tests. The node's mail path is asserted against a
+# real STARTTLS server rather than a mock, because the property that matters —
+# the password is not sent before the connection is encrypted — only exists if
+# there is an actual TLS handshake to order it against.
+aiosmtpd==1.4.6
+
 # Node services and dev tooling talk MQTT directly; the Pi3a tripwire reader
 # reads the ESP32 over UART.
 paho-mqtt==2.1.0

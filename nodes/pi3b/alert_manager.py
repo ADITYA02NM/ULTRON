@@ -7,7 +7,9 @@ compromised detection node cannot quietly delete the alert that named it.
 
 Responsibilities
   1. Persist every alert and every band change to the evidence database.
-  2. Email RED and PURPLE transitions (Phase 1 is notify-only — no blocking).
+  2. Notify on RED and PURPLE transitions (Phase 1 is notify-only — no
+     blocking). Mail and an optional push relay are both off until configured;
+     with neither set, nothing ever leaves the LAN.
   3. Own acknowledgement: the operator ACKs in the dashboard, and this node is
      what makes it stick, writing `ack`/`ack_ts` and re-publishing the alert so
      the UI reflects the durable record rather than a hopeful local guess.
@@ -24,8 +26,12 @@ import json
 import logging
 import smtplib
 import sqlite3
+import ssl
 import sys
+import threading
 import time
+import urllib.parse
+import urllib.request
 from email.message import EmailMessage
 from pathlib import Path
 
@@ -73,40 +79,55 @@ class Vault:
     def __init__(self, path: str) -> None:
         self.path = path
         Path(path).parent.mkdir(parents=True, exist_ok=True)
-        self.db = sqlite3.connect(path, timeout=10)
-        self.db.execute("PRAGMA journal_mode=WAL")
-        self.db.executescript(SCHEMA)
-        self.db.commit()
+        # paho delivers messages on its own network thread, so every write below
+        # runs on that thread while this connection was created on the main one.
+        # Without check_same_thread=False sqlite refuses the first message --
+        # "SQLite objects created in a thread can only be used in that same
+        # thread" -- and the node dies before it records anything, let alone
+        # notifies. The lock is what makes the sharing safe: sqlite is still not
+        # thread-safe, so the callback thread and the shutdown path must never
+        # be inside a transaction at the same time.
+        self.db = sqlite3.connect(path, timeout=10, check_same_thread=False)
+        self._lock = threading.Lock()
+        with self._lock:
+            self.db.execute("PRAGMA journal_mode=WAL")
+            self.db.executescript(SCHEMA)
+            self.db.commit()
 
     def record_alert(self, data: dict) -> None:
         alert_id = str(data.get("id") or "")
         if not alert_id:
             LOG.warning("dropping alert with no id: %r", data)
             return
-        self.db.execute(
-            "INSERT OR IGNORE INTO alerts (id, ts, sev, title, src, body, ack, ack_ts)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (alert_id, int(data.get("ts") or time.time()),
-             data.get("sev") or "info", data.get("title") or "",
-             data.get("src") or "", data.get("body") or "",
-             1 if data.get("ack") else 0, data.get("ack_ts")),
-        )
-        self.db.commit()
+        with self._lock:
+            self.db.execute(
+                "INSERT OR IGNORE INTO alerts"
+                " (id, ts, sev, title, src, body, ack, ack_ts)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (alert_id, int(data.get("ts") or time.time()),
+                 data.get("sev") or "info", data.get("title") or "",
+                 data.get("src") or "", data.get("body") or "",
+                 1 if data.get("ack") else 0, data.get("ack_ts")),
+            )
+            self.db.commit()
 
     def acknowledge(self, alert_id: str) -> bool:
         """Mark an alert acknowledged. Returns True if this call changed it."""
-        cur = self.db.execute(
-            "UPDATE alerts SET ack = 1, ack_ts = ? WHERE id = ? AND ack = 0",
-            (int(time.time()), alert_id),
-        )
-        self.db.commit()
-        return cur.rowcount > 0
+        with self._lock:
+            cur = self.db.execute(
+                "UPDATE alerts SET ack = 1, ack_ts = ? WHERE id = ? AND ack = 0",
+                (int(time.time()), alert_id),
+            )
+            self.db.commit()
+            return cur.rowcount > 0
 
     def find_alert(self, alert_id: str) -> dict | None:
-        row = self.db.execute(
-            "SELECT id, ts, sev, title, src, body, ack, ack_ts FROM alerts WHERE id = ?",
-            (alert_id,),
-        ).fetchone()
+        with self._lock:
+            row = self.db.execute(
+                "SELECT id, ts, sev, title, src, body, ack, ack_ts"
+                " FROM alerts WHERE id = ?",
+                (alert_id,),
+            ).fetchone()
         if row is None:
             return None
         keys = ("id", "ts", "sev", "title", "src", "body", "ack", "ack_ts")
@@ -115,12 +136,14 @@ class Vault:
         return out
 
     def record_score(self, score: int, ts: int | None = None) -> None:
-        self.db.execute("INSERT INTO scores (ts, score) VALUES (?, ?)",
-                        (ts or int(time.time()), int(score)))
-        self.db.commit()
+        with self._lock:
+            self.db.execute("INSERT INTO scores (ts, score) VALUES (?, ?)",
+                            (ts or int(time.time()), int(score)))
+            self.db.commit()
 
     def close(self) -> None:
-        self.db.close()
+        with self._lock:
+            self.db.close()
 
 
 def send_mail(args: argparse.Namespace, subject: str, body: str) -> None:
@@ -135,13 +158,53 @@ def send_mail(args: argparse.Namespace, subject: str, body: str) -> None:
     try:
         with smtplib.SMTP(args.smtp_host, args.smtp_port, timeout=15) as smtp:
             if args.smtp_user:
-                smtp.starttls()
+                # starttls() with no context uses ssl._create_stdlib_context(),
+                # which checks nothing: no certificate verification, no hostname
+                # check. We are one line away from handing that socket an app
+                # password, so we make it prove who it is first.
+                smtp.starttls(context=ssl.create_default_context())
                 smtp.login(args.smtp_user, args.smtp_pass or "")
             smtp.send_message(msg)
         LOG.info("notified %s: %s", ", ".join(args.mail_to), subject)
     except OSError as exc:
         # A failed notification must not stop the vault being written.
         LOG.error("could not send notification: %s", exc)
+
+
+def push_band(args: argparse.Namespace, band: str, subject: str, body: str) -> None:
+    """Push a notification to an ntfy-compatible server.
+
+    This is the only path by which alert content can leave the LAN, so it stays
+    off until an operator names a topic. No topic, nothing dialled — which is
+    what keeps the appliance's zero-cloud claim honest for anyone who has not
+    asked for push.
+    """
+    if not args.push_topic:
+        return
+    if args.dry_run:
+        LOG.info("[push suppressed] %s — %s", subject, body)
+        return
+    url = f"{args.push_url.rstrip('/')}/{urllib.parse.quote(args.push_topic)}"
+    req = urllib.request.Request(
+        url,
+        data=body.encode("utf-8"),
+        method="POST",
+        headers={
+            "Title": subject,
+            "Priority": "urgent" if band == "PURPLE" else "high",
+            "Tags": "rotating_light" if band == "PURPLE" else "warning",
+            "Markdown": "no",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            resp.read()
+        LOG.info("pushed %s: %s", args.push_topic, subject)
+    except OSError as exc:
+        # Same rule as mail: urllib.error.URLError and HTTPError both derive
+        # from OSError, so a dead push relay costs a notification, never the
+        # record, and never the process.
+        LOG.error("could not push notification: %s", exc)
 
 
 def run(args: argparse.Namespace) -> int:
@@ -151,6 +214,8 @@ def run(args: argparse.Namespace) -> int:
     LOG.info("alert manager up — vault %s", args.db)
 
     state = {"band": "GREEN"}
+    push_bands = {b.strip().upper()
+                  for b in (args.push_bands or "").split(",") if b.strip()}
 
     def on_message(client, userdata, msg) -> None:  # noqa: ANN001 - paho callback
         try:
@@ -176,10 +241,13 @@ def run(args: argparse.Namespace) -> int:
             if band and band != state["band"]:
                 LOG.info("band %s -> %s", state["band"], band)
                 state["band"] = band
+                subject = f"ULTRON {band}"
+                body = (f"Risk band is now {band}.\n"
+                        f"Open the dashboard to review and acknowledge.")
                 if band in NOTIFY_BANDS:
-                    send_mail(args, f"ULTRON {band}",
-                              f"Risk band is now {band}.\n"
-                              f"Open the dashboard to review and acknowledge.")
+                    send_mail(args, subject, body)
+                if band in push_bands:
+                    push_band(args, band, subject, body)
             return
 
         if msg.topic.startswith(TOPIC_ACK + "/"):
@@ -212,7 +280,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--db", default="/mnt/pendrive/ultron/ultron.db",
                     help="evidence vault (this node is its only writer)")
     ap.add_argument("--dry-run", action="store_true",
-                    help="record everything but send no mail")
+                    help="record everything but send no mail and no push")
     ap.add_argument("--smtp-host", default=None)
     ap.add_argument("--smtp-port", type=int, default=587)
     ap.add_argument("--smtp-user", default=None)
@@ -220,6 +288,12 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--mail-from", default="ultron@localhost")
     ap.add_argument("--mail-to", action="append", default=[],
                     help="repeat for several recipients")
+    ap.add_argument("--push-url", default="https://ntfy.sh",
+                    help="ntfy-compatible push server")
+    ap.add_argument("--push-topic", default=None,
+                    help="push topic; unset means no push at all")
+    ap.add_argument("--push-bands", default="RED,PURPLE",
+                    help="comma-separated bands that push a notification")
     add_mqtt_args(ap)
     args = ap.parse_args(argv)
     setup_logging(args.verbose)

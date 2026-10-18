@@ -1,4 +1,5 @@
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 320" width="1200" height="320" role="img" aria-label="ULTRON Smart-House IoT Cybersecurity Ecosystem banner">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 320" width="1200" height="320" role="img" aria-label="ULTRON Smart-House IoT Cybersecurity Ecosystem banner">
+  <title>ULTRON — Smart-House IoT Cybersecurity Ecosystem</title>
   <defs>
     <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" stop-color="#0a0e14"/>
@@ -15,6 +16,11 @@
       <stop offset="0%" stop-color="#38bdf8"/>
       <stop offset="100%" stop-color="#6366f1"/>
     </linearGradient>
+    <linearGradient id="sheen" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0"/>
+      <stop offset="50%" stop-color="#ffffff" stop-opacity="0.9"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
     <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
       <feGaussianBlur stdDeviation="4" result="b"/>
       <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
@@ -22,38 +28,114 @@
     <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
       <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1a2332" stroke-width="1"/>
     </pattern>
+    <clipPath id="bar-clip">
+      <rect x="0" y="0" width="1200" height="4"/>
+      <rect x="0" y="316" width="1200" height="4"/>
+    </clipPath>
+    <clipPath id="title-clip">
+      <text x="230" y="118" font-family="system-ui,sans-serif" font-size="64" font-weight="800" letter-spacing="6">ULTRON</text>
+    </clipPath>
+
+    <style>
+      /* All motion is translate/opacity only: no rotation, no scaling, so nothing
+         depends on transform-origin and the banner behaves identically whether it
+         is opened directly, embedded as an image, or rasterised. Hidden entirely
+         when the reader has asked for reduced motion. */
+      .sweep { opacity: 0; }
+      .shine { opacity: 0; }
+      .ping  { stroke-opacity: 0; }
+
+      @media (prefers-reduced-motion: no-preference) {
+        .drift  { animation: u-drift  14s linear infinite; }
+        .sweep  { animation: u-sweep  6.5s ease-in-out infinite; opacity: 1; }
+        .shine  { animation: u-shine  7s ease-in-out infinite; opacity: 1; }
+        .ping   { animation: u-ping   3.6s ease-out infinite; }
+        .ring   { animation: u-ring   4.4s ease-in-out infinite; }
+        .chip   { animation: u-chip   5.2s ease-in-out infinite; }
+        .badge  { animation: u-badge  3.6s ease-in-out infinite; }
+      }
+
+      @keyframes u-drift {
+        from { transform: translate(0, 0); }
+        to   { transform: translate(40px, 40px); }
+      }
+      @keyframes u-sweep {
+        0%        { transform: translateX(-320px); }
+        60%, 100% { transform: translateX(1540px); }
+      }
+      @keyframes u-shine {
+        0%        { transform: translateX(-300px); }
+        55%, 100% { transform: translateX(1180px); }
+      }
+      @keyframes u-ping {
+        0%        { stroke-width: 2;  stroke-opacity: 0.55; }
+        70%, 100% { stroke-width: 30; stroke-opacity: 0; }
+      }
+      @keyframes u-ring {
+        0%, 100% { opacity: 0.35; }
+        50%      { opacity: 1; }
+      }
+      @keyframes u-chip {
+        0%, 100% { opacity: 0.42; }
+        8%, 22%  { opacity: 1; }
+      }
+      @keyframes u-badge {
+        0%, 100% { opacity: 1; }
+        50%      { opacity: 0.68; }
+      }
+    </style>
   </defs>
 
   <rect width="1200" height="320" fill="url(#bg)"/>
-  <rect width="1200" height="320" fill="url(#grid)" opacity="0.45"/>
+  <!-- 40-unit overscan on every side so the diagonal drift never exposes an edge -->
+  <rect class="drift" x="-40" y="-40" width="1280" height="400" fill="url(#grid)" opacity="0.45"/>
 
   <!-- top accent line -->
   <rect x="0" y="0" width="1200" height="4" fill="url(#accent)"/>
+  <!-- bottom line -->
+  <rect x="0" y="316" width="1200" height="4" fill="url(#accent)"/>
+  <!-- light travelling along both edges -->
+  <rect class="sweep" x="0" y="-20" width="260" height="360" fill="url(#sheen)" clip-path="url(#bar-clip)"/>
 
-  <!-- shield logo -->
+  <!-- perimeter ping — drawn first so the shield body masks its inner half and
+       the stroke reads as a pulse expanding away from the perimeter -->
+  <g transform="translate(64,78)">
+    <path class="ping" d="M70 8 L128 32 V78 C128 118 100 148 70 162 C40 148 12 118 12 78 V32 Z"
+          fill="none" stroke="#7dd3fc" stroke-width="2" stroke-opacity="0"/>
+  </g>
+
+  <!-- shield logo; the inner outline breathes as if the sensor is settling -->
   <g transform="translate(64,78)" filter="url(#glow)">
     <path d="M70 8 L128 32 V78 C128 118 100 148 70 162 C40 148 12 118 12 78 V32 Z"
           fill="#0f172a" stroke="url(#shield)" stroke-width="4"/>
-    <path d="M70 36 L104 50 V80 C104 104 88 124 70 134 C52 124 36 104 36 80 V50 Z"
+    <path class="ring" d="M70 36 L104 50 V80 C104 104 88 124 70 134 C52 124 36 104 36 80 V50 Z"
           fill="none" stroke="#38bdf8" stroke-width="2" opacity="0.7"/>
     <text x="70" y="92" text-anchor="middle" font-family="ui-monospace,monospace" font-size="28" font-weight="700" fill="#e2e8f0">U</text>
   </g>
 
   <!-- title block -->
   <text x="230" y="118" font-family="system-ui,sans-serif" font-size="64" font-weight="800" fill="#f1f5f9" letter-spacing="6">ULTRON</text>
+  <!-- highlight raking across the wordmark, clipped to the letterforms -->
+  <rect class="shine" x="180" y="56" width="340" height="76" fill="url(#sheen)" clip-path="url(#title-clip)"/>
   <text x="232" y="152" font-family="system-ui,sans-serif" font-size="18" font-weight="600" fill="#38bdf8" letter-spacing="3">SMART-HOUSE IoT CYBERSECURITY ECOSYSTEM</text>
   <text x="232" y="182" font-family="system-ui,sans-serif" font-size="15" fill="#94a3b8" letter-spacing="2">DETECTION · GOVERNANCE · ALERT MANAGEMENT</text>
 
   <!-- pillar chips -->
   <g font-family="system-ui,sans-serif" font-size="13" font-weight="600">
-    <rect x="232" y="210" width="130" height="34" rx="6" fill="#14532d" stroke="#22c55e"/>
-    <text x="297" y="232" text-anchor="middle" fill="#86efac">Pi3a DETECT</text>
+    <g class="chip">
+      <rect x="232" y="210" width="130" height="34" rx="6" fill="#14532d" stroke="#22c55e"/>
+      <text x="297" y="232" text-anchor="middle" fill="#86efac">Pi3a DETECT</text>
+    </g>
 
-    <rect x="374" y="210" width="140" height="34" rx="6" fill="#1e3a5f" stroke="#38bdf8"/>
-    <text x="444" y="232" text-anchor="middle" fill="#7dd3fc">Pi4 GOVERN</text>
+    <g class="chip">
+      <rect x="374" y="210" width="140" height="34" rx="6" fill="#1e3a5f" stroke="#38bdf8"/>
+      <text x="444" y="232" text-anchor="middle" fill="#7dd3fc">Pi4 GOVERN</text>
+    </g>
 
-    <rect x="526" y="210" width="130" height="34" rx="6" fill="#4c1d95" stroke="#a855f7"/>
-    <text x="591" y="232" text-anchor="middle" fill="#d8b4fe">Pi3b ALERT</text>
+    <g class="chip">
+      <rect x="526" y="210" width="130" height="34" rx="6" fill="#4c1d95" stroke="#a855f7"/>
+      <text x="591" y="232" text-anchor="middle" fill="#d8b4fe">Pi3b ALERT</text>
+    </g>
   </g>
 
   <!-- stats column -->
@@ -71,24 +153,29 @@
     <text x="940" y="204" font-size="12" fill="#64748b" letter-spacing="1">PI + ESP32 NODES</text>
   </g>
 
-  <!-- risk band strip -->
+  <!-- risk band strip; the four bands light up in turn, green through purple -->
   <g transform="translate(780,230)" font-family="system-ui,sans-serif" font-size="11" font-weight="700">
-    <rect x="0" y="0" width="70" height="28" rx="4" fill="#14532d" stroke="#22c55e"/>
-    <text x="35" y="18" text-anchor="middle" fill="#86efac">GREEN</text>
-    <rect x="76" y="0" width="80" height="28" rx="4" fill="#713f12" stroke="#eab308"/>
-    <text x="116" y="18" text-anchor="middle" fill="#fde047">YELLOW</text>
-    <rect x="162" y="0" width="60" height="28" rx="4" fill="#7f1d1d" stroke="#ef4444"/>
-    <text x="192" y="18" text-anchor="middle" fill="#fca5a5">RED</text>
-    <rect x="228" y="0" width="80" height="28" rx="4" fill="#3b0764" stroke="#a855f7"/>
-    <text x="268" y="18" text-anchor="middle" fill="#e9d5ff">PURPLE</text>
+    <g class="chip" style="animation-delay: 0s">
+      <rect x="0" y="0" width="70" height="28" rx="4" fill="#14532d" stroke="#22c55e"/>
+      <text x="35" y="18" text-anchor="middle" fill="#86efac">GREEN</text>
+    </g>
+    <g class="chip" style="animation-delay: 1.3s">
+      <rect x="76" y="0" width="80" height="28" rx="4" fill="#713f12" stroke="#eab308"/>
+      <text x="116" y="18" text-anchor="middle" fill="#fde047">YELLOW</text>
+    </g>
+    <g class="chip" style="animation-delay: 2.6s">
+      <rect x="162" y="0" width="60" height="28" rx="4" fill="#7f1d1d" stroke="#ef4444"/>
+      <text x="192" y="18" text-anchor="middle" fill="#fca5a5">RED</text>
+    </g>
+    <g class="chip" style="animation-delay: 3.9s">
+      <rect x="228" y="0" width="80" height="28" rx="4" fill="#3b0764" stroke="#a855f7"/>
+      <text x="268" y="18" text-anchor="middle" fill="#e9d5ff">PURPLE</text>
+    </g>
   </g>
 
   <!-- badge -->
-  <g transform="translate(1040,48)">
+  <g class="badge" transform="translate(1040,48)">
     <rect x="0" y="0" width="120" height="36" rx="18" fill="#1e293b" stroke="#f97316" stroke-width="2"/>
     <text x="60" y="23" text-anchor="middle" font-family="system-ui,sans-serif" font-size="12" font-weight="700" fill="#fdba74">BLACK HAT IoT</text>
   </g>
-
-  <!-- bottom line -->
-  <rect x="0" y="316" width="1200" height="4" fill="url(#accent)"/>
 </svg>

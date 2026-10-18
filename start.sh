@@ -2,11 +2,16 @@
 # ---------------------------------------------------------------------------
 # ULTRON — one-command local stack (no sudo, no Docker, no Raspberry Pi)
 #
-#   ./start.sh              mqtt + backend :8081 + vite :5173 + mock feed
+#   ./start.sh              mqtt + backend :8081 + vite :5173 (nothing simulated)
+#   ./start.sh --feed       also start the mock sensor publisher
 #   ./start.sh --prod       mqtt + backend :8080 serving the prebuilt dist
 #   ./start.sh --fresh      wipe auth.db first so the QR enrols a new passkey
-#   ./start.sh --no-feed    skip the mock sensor publisher
 #   ./start.sh --no-qr      skip QR generation
+#
+# The sensor simulation is OFF by default. Nothing publishes until an operator
+# asks for it, so the dashboard shows the honest state -- quiet, and stale if
+# nothing has reported -- instead of a demo already in progress. Use
+# ./simulate.sh to drive it; see that script for the two scenarios.
 #
 # Ctrl+C stops every child this script started.
 # ---------------------------------------------------------------------------
@@ -34,19 +39,28 @@ LOG="/tmp/ultron"
 
 MODE="dev"
 FRESH=0
-FEED=1
+
+# Nothing is simulated unless an operator asks for it. A dashboard bolted to a
+# quiet broker is the honest picture; a demo that is already in progress is not.
+FEED=0
 QR=1
 
 usage() {
   cat <<'EOF'
 ULTRON — one-command local stack (no sudo, no Docker, no Raspberry Pi)
 
-  ./start.sh              mqtt + backend :8081 + vite :5173 + mock feed
+  ./start.sh              mqtt + backend :8081 + vite :5173 (nothing simulated)
+  ./start.sh --feed       also start the mock sensor publisher (stress drill)
+  ./start.sh --no-feed    never start it (this is the default)
   ./start.sh --prod       mqtt + backend :8080 serving the prebuilt dist
   ./start.sh --fresh      wipe auth.db first so the QR enrols a new passkey
-  ./start.sh --no-feed    skip the mock sensor publisher
   ./start.sh --no-qr      skip QR generation
   ./start.sh --help       this text
+
+The sensor simulation is off by default, so the dashboard shows what is really
+there rather than a script that is already mid-story. Start a drill from the
+dashboard's SIMULATE button, or from a terminal with ./simulate.sh (run
+`./simulate.sh --help` for the scenarios).
 
 Ctrl+C stops every child this script started. Logs land in /tmp/ultron-*.log
 EOF
@@ -57,6 +71,7 @@ for arg in "$@"; do
   case "$arg" in
     --prod)    MODE="prod" ;;
     --fresh)   FRESH=1 ;;
+    --feed)    FEED=1 ;;
     --no-feed) FEED=0 ;;
     --no-qr)   QR=0 ;;
     -h|--help) usage ;;
@@ -345,8 +360,114 @@ fi
 # 8. Mock feed (plays the Pis + the risk engine)
 # ---------------------------------------------------------------------------
 if [ "$FEED" = 1 ]; then
-  start_bg feed "$REPO" "$PY" -u "$DASH/tools/mock_feed.py" --host 127.0.0.1 --port 1883 --script demo
+  # `stress` reaches RED and PURPLE; `demo` is an honest home-under-watch story
+  # that peaks at YELLOW, which is what made a running drill look like nothing.
+  start_bg feed "$REPO" "$PY" -u "$DASH/tools/mock_feed.py" --host 127.0.0.1 --port 1883 --script stress
   sleep 1
+fi
+
+# ---------------------------------------------------------------------------
+# 8b. Alert manager (Pi3b) — the only writer of the evidence vault
+#
+#     Notification is configured out-of-band so no credential ever lands in git.
+#     Copy .notify.example to .notify (gitignored, 0600) or export the
+#     ULTRON_SMTP_* / ULTRON_PUSH_* variables; the environment wins over the file.
+#
+#     Two independent channels: mail, and an optional push relay (ntfy). With
+#     neither configured this still starts — the node records every alert and
+#     band change and logs "[mail suppressed]" / "[push suppressed]" instead of
+#     sending. Notification sits on top of the record, never underneath it: the
+#     vault is this node's actual job and it does not depend on a live relay.
+# ---------------------------------------------------------------------------
+NOTIFY_CONF="$REPO/.notify"
+
+# One KEY=VALUE from .notify. Never fails: a missing file or key yields an empty
+# string, so `set -euo pipefail` cannot trip on a first run before mail is set up.
+_notify_get() {
+  [ -f "$NOTIFY_CONF" ] || return 0
+  { grep -E "^[[:space:]]*$1[[:space:]]*=" "$NOTIFY_CONF" 2>/dev/null || true; } \
+    | tail -n1 | cut -d= -f2- \
+    | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's/^"//' -e 's/"$//'
+}
+
+# Secrets live in .env, never in .notify and never in git. Source it first so
+# the ULTRON_* names below resolve from it; the environment always wins over
+# .notify. `set -a` exports everything the file assigns, so child processes see
+# it too — without that, alert_manager would start with no password at all and
+# Gmail would answer 535, which the node logs and swallows by design.
+if [ -f "$REPO/.env" ]; then
+  set -a
+  # shellcheck disable=SC1091
+  . "$REPO/.env"
+  set +a
+fi
+
+SMTP_HOST="${ULTRON_SMTP_HOST:-$(_notify_get SMTP_HOST)}"
+SMTP_PORT="${ULTRON_SMTP_PORT:-$(_notify_get SMTP_PORT)}"
+SMTP_USER="${ULTRON_SMTP_USER:-$(_notify_get SMTP_USER)}"
+SMTP_PASS="${ULTRON_SMTP_PASS:-$(_notify_get SMTP_PASS)}"
+MAIL_FROM="${ULTRON_MAIL_FROM:-$(_notify_get MAIL_FROM)}"
+MAIL_TO="${ULTRON_MAIL_TO:-$(_notify_get MAIL_TO)}"
+[ -n "$SMTP_PORT" ] || SMTP_PORT=587
+[ -n "$MAIL_FROM" ] || MAIL_FROM=ultron@localhost
+
+PUSH_URL="${ULTRON_PUSH_URL:-$(_notify_get PUSH_URL)}"
+PUSH_TOPIC="${ULTRON_PUSH_TOPIC:-$(_notify_get PUSH_TOPIC)}"
+PUSH_BANDS="${ULTRON_PUSH_BANDS:-$(_notify_get PUSH_BANDS)}"
+[ -n "$PUSH_URL" ] || PUSH_URL=https://ntfy.sh
+[ -n "$PUSH_BANDS" ] || PUSH_BANDS=RED,PURPLE
+
+# Mail needs a relay AND somewhere to send it. Half-configured is a mistyped
+# file, and the honest response is to say so and keep recording.
+MAIL_ON=0
+if [ -n "$SMTP_HOST" ] && [ -n "$MAIL_TO" ]; then
+  MAIL_ON=1
+elif [ -n "$SMTP_HOST" ]; then
+  echo "[start] alerts: SMTP_HOST is set but MAIL_TO is empty — mail stays suppressed"
+fi
+
+# Push needs only a topic; the server has a sane default. No topic, nothing
+# dialled, and the appliance never talks to anything off the LAN.
+PUSH_ON=0
+if [ -n "$PUSH_TOPIC" ]; then
+  PUSH_ON=1
+fi
+
+_alert_args=(--db "$ULTRON_EVIDENCE_DB" --smtp-port "$SMTP_PORT" --mail-from "$MAIL_FROM")
+if [ "$MAIL_ON" = 1 ]; then
+  _alert_args+=(--smtp-host "$SMTP_HOST")
+  if [ -n "$SMTP_USER" ]; then
+    _alert_args+=(--smtp-user "$SMTP_USER" --smtp-pass "$SMTP_PASS")
+  fi
+  # MAIL_TO may be comma-, semicolon- or space-separated; --mail-to repeats.
+  for _to in $(printf '%s' "$MAIL_TO" | tr ',;' '  '); do
+    _alert_args+=(--mail-to "$_to")
+  done
+fi
+if [ "$PUSH_ON" = 1 ]; then
+  _alert_args+=(--push-url "$PUSH_URL" --push-topic "$PUSH_TOPIC"
+                --push-bands "$PUSH_BANDS")
+fi
+
+# --dry-run silences BOTH channels, so it may only go on when neither is
+# configured. Sending it for a push-only setup would silently mute the push.
+if [ "$MAIL_ON" = 0 ] && [ "$PUSH_ON" = 0 ]; then
+  _alert_args+=(--dry-run)
+fi
+
+start_bg alerts "$REPO" "$PY" -u "$REPO/nodes/pi3b/alert_manager.py" "${_alert_args[@]}"
+
+MAIL_DESC="off — vault only (cp .notify.example .notify)"
+if [ "$MAIL_ON" = 1 ]; then MAIL_DESC="$SMTP_HOST:$SMTP_PORT -> $MAIL_TO  (on RED / PURPLE)"; fi
+PUSH_DESC="off — set PUSH_TOPIC in .notify"
+if [ "$PUSH_ON" = 1 ]; then PUSH_DESC="$PUSH_URL -> $PUSH_TOPIC  ($PUSH_BANDS)"; fi
+
+if [ "$MAIL_ON" = 1 ] || [ "$PUSH_ON" = 1 ]; then
+  echo "[start] alerts: recording + notifying — $MAIL_DESC | $PUSH_DESC"
+  echo "[start] alerts: if the broker is still holding RED from a previous run,"
+  echo "[start] alerts: the first notification goes out immediately. That is correct."
+else
+  echo "[start] alerts: vault only, no notification (see .notify.example)"
 fi
 
 # ---------------------------------------------------------------------------
@@ -378,7 +499,10 @@ cat <<EOF
   Dashboard   $DASH_URL
   API / WS    http://localhost:$HTTP_PORT   (proxied /ws, /auth, /healthz)
   MQTT        127.0.0.1:1883
-$( [ "$FEED" = 1 ] && echo "  Mock feed   demo script, looping forever" )
+$( [ "$FEED" = 1 ] && echo "  Mock feed   stress drill, looping forever" || echo "  Mock feed   off — press SIMULATE in the dashboard, or run ./simulate.sh" )
+  Evidence    dev-evidence.db   (written only by the alerts node)
+  Mail        $MAIL_DESC
+  Push        $PUSH_DESC
   LAN code    $DEMO_CODE        (backup sign-in: phone / 2nd laptop)
   LAN URL     http://$LAN_IP:$HTTP_PORT   ($LAN_NOTE)
 
@@ -394,7 +518,7 @@ fi
 
 cat <<EOF
 
-  Logs  /tmp/ultron-{mqtt,server,vite,feed}.log
+  Logs  /tmp/ultron-{mqtt,server,vite,feed,alerts}.log
   Stop  Ctrl+C
 ================================================================
 
