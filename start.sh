@@ -82,11 +82,26 @@ done
 # --- port topology ---------------------------------------------------------
 if [ "$MODE" = "prod" ]; then
   HTTP_PORT=8080
-  ORIGINS="http://localhost:8080,http://localhost:8081,http://localhost:5173"
 else
   HTTP_PORT=8081
-  ORIGINS="http://localhost:5173,http://localhost:8081,http://localhost:8080"
 fi
+
+# Every loopback spelling a browser can produce has to be listed, for every port
+# in play. The WS upgrade and the WebAuthn origin check both compare the Origin
+# header against this list with an exact string match, so carrying only
+# "localhost" means the page happily loads on 127.0.0.1 or [::1] and then never
+# connects — no websocket, no /healthz, a dashboard that looks permanently
+# offline. config._validate accepts these literals for http origins.
+ORIGINS=""
+for _h in "localhost" "127.0.0.1" "[::1]"; do
+  for _p in "$HTTP_PORT" 8080 8081 5173; do
+    case ",$ORIGINS," in
+      *",http://$_h:$_p,"*) ;;
+      *) ORIGINS="${ORIGINS:+$ORIGINS,}http://$_h:$_p" ;;
+    esac
+  done
+done
+unset _h _p
 
 # --- child bookkeeping -----------------------------------------------------
 PIDS=()
@@ -497,7 +512,7 @@ cat <<EOF
  ULTRON is up
 ================================================================
   Dashboard   $DASH_URL
-  API / WS    http://localhost:$HTTP_PORT   (proxied /ws, /auth, /healthz)
+  API / WS    http://localhost:$HTTP_PORT   (proxied /ws, /auth, /healthz, /debug.html)
   MQTT        127.0.0.1:1883
 $( [ "$FEED" = 1 ] && echo "  Mock feed   stress drill, looping forever" || echo "  Mock feed   off — press SIMULATE in the dashboard, or run ./simulate.sh" )
   Evidence    dev-evidence.db   (written only by the alerts node)
