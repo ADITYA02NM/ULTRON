@@ -12,6 +12,16 @@ const CYCLE_MS = 92000;
 const SCORE_TICK_MS = 1000;
 const HEALTH_TICK_MS = 4000;
 
+// Smart-home endpoints on the monitored LAN. Must stay in step with
+// dashboard/tools/mock_feed.py LAN_DEVICES so the client-side simulation and
+// the real MQTT demo feed paint the same topology.
+const IOT_DEVICES = [
+  { mac: "B0:4E:26:1A:2B:3C", ip: "192.168.100.61", vendor: "Hikvision", label: "IP camera" },
+  { mac: "50:C7:BF:4D:5E:6F", ip: "192.168.100.62", vendor: "TP-Link", label: "Smart plug" },
+  { mac: "24:6F:28:7A:8B:9C", ip: "192.168.100.63", vendor: "Espressif", label: "Door sensor" },
+] as const;
+const [CAMERA, PLUG, DOOR] = IOT_DEVICES;
+
 interface Beat { at: number; run: (cycle: number) => void; }
 
 export class Simulation {
@@ -46,6 +56,14 @@ export class Simulation {
 
   private cmd(raw: string): void { execCommand(raw); }
 
+  /** Re-announce every smart-home endpoint — keeps lastSeen fresh so the
+   *  topology never ages them out. */
+  private lanAll(): void {
+    for (const d of IOT_DEVICES) {
+      this.emit("lan", { mac: d.mac, ip: d.ip, vendor: d.vendor, known: true });
+    }
+  }
+
   private clearTimers(): void {
     for (const id of this.beatTimers) window.clearTimeout(id);
     this.beatTimers = [];
@@ -78,80 +96,104 @@ export class Simulation {
   private beats(): Beat[] {
     return [
       { at: 0, run: () => {
-        this.toast("Simulation started — live demo feed", "info");
+        this.toast("Watch started — narrating the home LAN", "info");
         this.cmd("/health");
-        this.target = 10;
+        this.target = 8;
+      } },
+
+      // ── Phase A · every node and endpoint reports in, all healthy ────────
+      { at: 1500, run: () => {
+        this.emit("lan", { mac: "00:11:22:33:44:55", ip: "192.168.100.10", vendor: "TP-Link", known: true });
+        this.alert("info", "Pi4 governance online", "health/pi4",
+          "192.168.100.1 — mosquitto, risk engine and dashboard up. Watchdog armed.");
       } },
       { at: 3000, run: () => {
-        this.emit("lan", { mac: "00:11:22:33:44:55", ip: "192.168.100.10", vendor: "TP-Link", known: true });
+        this.emit("lan", { mac: CAMERA.mac, ip: CAMERA.ip, vendor: CAMERA.vendor, known: true });
+        this.alert("info", `${CAMERA.label} checked in`, "detect/lan",
+          `${CAMERA.vendor} ${CAMERA.ip} — 1080p stream healthy, RTSP 554 open, uptime 6 d.`);
       } },
-      { at: 5000, run: () => this.cmd("/device 192.168.100.10") },
-      { at: 7000, run: () => {
-        this.emit("lan", { mac: "AA:BB:CC:DD:EE:FF", ip: "192.168.100.50", vendor: "Espressif", known: false });
-        this.alert("info", "New LAN device observed", "detect/lan", "Unfamiliar MAC AA:BB:CC:DD:EE:FF · 192.168.100.50 joined the production switch");
+      { at: 4500, run: () => {
+        this.emit("lan", { mac: PLUG.mac, ip: PLUG.ip, vendor: PLUG.vendor, known: true });
+        this.alert("info", `${PLUG.label} reported in`, "detect/lan",
+          `${PLUG.vendor} ${PLUG.ip} — relay closed, drawing 11 W, Wi-Fi −54 dBm.`);
       } },
-      { at: 9000, run: () => { this.target = 22; } },
-      { at: 11000, run: () => {
-        this.emit("event", { topic: "ultron/detect/suricata", node: "pi3a", kind: "suricata", sev: "yellow", summary: "ET SCAN Nmap script scan detected", src_ip: "192.168.100.50", dest_ip: "192.168.100.1", sig_id: 2010935 });
+      { at: 6000, run: () => this.cmd(`/device ${PLUG.ip}`) },
+      { at: 7500, run: () => {
+        this.emit("lan", { mac: DOOR.mac, ip: DOOR.ip, vendor: DOOR.vendor, known: true });
+        this.alert("info", `${DOOR.label} paired`, "detect/lan",
+          `${DOOR.label} ${DOOR.ip} — front door contact, battery 92%, last event 3 h ago.`);
       } },
-      { at: 13000, run: () => this.cmd("/latency") },
-      { at: 15000, run: () => { this.target = 38; } },
-      { at: 17000, run: () => {
-        this.emit("event", { topic: "ultron/detect/wifi", node: "pi3a", kind: "wifi", sev: "yellow", summary: "Rogue AP 'FREE_WIFI_5G' beaconing on channel 6" });
+      { at: 9000, run: () => this.alert("info", "Detection node online", "health/pi3a",
+        "192.168.100.2 — Suricata 26,140 signatures loaded, LAN observer on eth0. No drops.") },
+
+      // ── Phase B · ordinary household activity, nothing wrong ─────────────
+      { at: 12000, run: () => this.alert("info", "Front door opened", "detect/lan",
+        `${DOOR.label} ${DOOR.ip} — contact opened, resident arriving home.`) },
+      { at: 14500, run: () => this.cmd(`/device ${DOOR.ip}`) },
+      { at: 17000, run: () => this.alert("info", "Front door closed", "detect/lan",
+        `${DOOR.label} ${DOOR.ip} — contact closed after 5 s, battery unchanged at 92%.`) },
+      { at: 19500, run: () => {
+        this.target = 14;
+        this.alert("info", `${PLUG.label} load changed`, "detect/lan",
+          `${PLUG.label} ${PLUG.ip} — draw 11 W → 46 W, kettle switched on.`);
       } },
-      { at: 19000, run: () => {
-        this.emit("tripwire", { node: "pi3a", edge: "open" });
-        this.alert("yellow", "Case tripwire opened", "tripwire/pi3a", "GPIO16 reed switch opened — detection node enclosure");
-      } },
-      { at: 23000, run: () => this.cmd("/filter type:suricata") },
+      { at: 22000, run: () => this.alert("info", `${CAMERA.label} stream healthy`, "detect/lan",
+        `${CAMERA.label} ${CAMERA.ip} — 1080p @ 15 fps, 0 dropped frames this hour.`) },
       { at: 25000, run: () => {
-        this.target = 64;
-        this.emit("event", { topic: "ultron/detect/suricata", node: "pi3a", kind: "suricata", sev: "red", summary: "ET TROJAN Possible Cobalt Strike C2 check-in", src_ip: "192.168.100.50", dest_ip: "185.220.101.9", sig_id: 2035007 });
-        this.emit("event", { topic: "ultron/detect/suricata", node: "pi3a", kind: "suricata", sev: "red", summary: "ET INFO Windows Executable Download From Non-Standard Port", src_ip: "192.168.100.50", dest_ip: "185.220.101.9" });
+        this.emit("lan", { mac: "AA:BB:CC:DD:EE:FF", ip: "192.168.100.57", vendor: "Apple", known: false });
+        this.alert("info", "Unfamiliar device joined", "detect/lan",
+          "AA:BB:CC:DD:EE:FF · 192.168.100.57 — first seen on the LAN, watching before trusting.");
       } },
-      { at: 27000, run: () => {
-        this.alert("red", "Suricata IDS hit — ET MALWARE beaconing", "alert/pi3b", "Beaconing pattern from 192.168.100.50 to 185.220.101.9 — email dispatched to operator");
+      { at: 30000, run: () => {
+        this.emit("lan", { mac: "AA:BB:CC:DD:EE:FF", ip: "192.168.100.57", vendor: "Apple", known: true });
+        this.alert("info", "Unfamiliar device identified", "detect/lan",
+          "AA:BB:CC:DD:EE:FF resolved to a household iPhone on the guest SSID — marked known.");
       } },
-      { at: 29000, run: () => this.toast("Band RED — posture degraded", "red") },
-      { at: 31000, run: () => this.cmd("/focus pi3a") },
-      { at: 33000, run: () => {
-        this.emit("tripwire", { node: "pi3b", edge: "open" });
-        this.alert("yellow", "Case tripwire opened — Pi3b", "tripwire/pi3b", "GPIO17 reed switch opened — alert node enclosure");
+
+      // ── Phase C · the one real finding of the cycle ───────────────────────
+      { at: 34000, run: () => {
+        this.emit("event", { topic: "ultron/detect/suricata", node: "pi3a", kind: "suricata",
+          sev: "yellow", summary: "ET SCAN default credential probe",
+          src_ip: "192.168.100.57", dest_ip: CAMERA.ip, sig_id: 2010935 });
+        this.alert("yellow", `${CAMERA.label} probed for default credentials`, "detect/suricata",
+          `192.168.100.57 → ${CAMERA.ip} — 14 login attempts to the camera web UI in 30 s.`);
+        this.target = 38;
       } },
-      { at: 35000, run: () => { this.target = 88; } },
-      { at: 37000, run: () => {
-        this.emit("event", { topic: "ultron/detect/suricata", node: "pi3a", kind: "suricata", sev: "purple", summary: "ET MALWARE Metasploit Payload Execution", src_ip: "192.168.100.50", dest_ip: "185.220.101.9" });
-        this.alert("purple", "C2 beaconing detected", "alert/pi3b", "Sustained C2 session — PURPLE escalation envelope, operator paged");
-      } },
-      { at: 39000, run: () => this.toast("PURPLE — escalation envelope", "purple") },
-      { at: 41000, run: () => {
+      { at: 36000, run: () => this.toast("YELLOW — one finding under review", "yellow") },
+      { at: 37500, run: () => this.cmd("/filter type:suricata") },
+      { at: 39000, run: () => this.alert("info", "Probe rejected", "detect/suricata",
+        `All 14 attempts failed — ${CAMERA.label} is not on default credentials. No access gained.`) },
+      { at: 41000, run: () => this.alert("yellow", `${CAMERA.label} firmware is stale`, "detect/lan",
+        `${CAMERA.vendor} ${CAMERA.ip} — firmware v5.6.2, 14 months old, 3 known CVEs unpatched.`) },
+      { at: 43000, run: () => {
         const open = store.getState().alerts.find((a) => !a.ack);
         if (open) transport.sendAck(open.id);
       } },
-      { at: 43000, run: () => this.toast("MQTT DEGRADED", "yellow") },
-      { at: 47000, run: () => {
-        this.silence = true;
-        this.alert("yellow", "Node pi3a heartbeat lost", "health/pi4", "No heartbeat from detection node for 15s — tile will age");
+      { at: 45000, run: () => {
+        this.target = 10;
+        this.toast("Finding acknowledged — decaying to GREEN", "info");
       } },
-      { at: 51000, run: () => this.cmd("/health") },
-      { at: 53000, run: () => { this.target = 55; } },
-      { at: 55000, run: () => this.toast("MQTT LIVE", "info") },
-      { at: 57000, run: () => this.cmd("/clear-filter") },
+
+      // ── Phase D · close out the cycle, everything nominal ─────────────────
+      { at: 47000, run: () => this.alert("info", "Pi3a heartbeat steady", "health/pi4",
+        "Detection node reporting every 4 s, Suricata drop rate 0 %.") },
+      { at: 51000, run: () => this.cmd("/clear-filter") },
+      { at: 55000, run: () => this.lanAll() },
+      { at: 59000, run: () => this.alert("info", "Indicator reading GREEN", "health/esp32",
+        "ESP32-C3 OLED GREEN, LED steady — no operator action required.") },
       { at: 63000, run: () => this.cmd("/history 6h") },
-      { at: 65000, run: () => this.cmd("/latency") },
-      { at: 70000, run: () => {
+      { at: 67000, run: () => this.alert("info", "All endpoints nominal", "health/pi4",
+        "7/7 nodes healthy · 1 acknowledged advisory · 0 open critical. Watch continues.") },
+      { at: 71000, run: () => this.cmd("/latency") },
+      { at: 75000, run: () => {
         for (const a of store.getState().alerts) {
           if (!a.ack) transport.sendAck(a.id);
         }
       } },
-      { at: 80000, run: () => {
-        this.silence = false;
-        this.target = 6;
-      } },
-      { at: 82000, run: () => this.cmd("/focus") },
-      { at: 86000, run: () => this.cmd("/help") },
-      { at: 88000, run: () => this.toast("Cycle complete — restarting demo", "info") },
-      { at: 91000, run: () => this.cmd("/history 24h") },
+      { at: 79000, run: () => this.lanAll() },
+      { at: 83000, run: () => this.cmd("/focus") },
+      { at: 87000, run: () => this.toast("Cycle complete — restarting watch", "info") },
+      { at: 89000, run: () => this.cmd("/health") },
       { at: CYCLE_MS, run: (c) => {
         this.cycle = c + 1;
         this.alertSeq = 0;

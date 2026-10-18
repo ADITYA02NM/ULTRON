@@ -60,7 +60,7 @@ function HeaderImpl() {
       >
         {simRunning ? "■ STOP" : "▶ SIMULATE"}
       </button>
-      <button className="session-chip" title="Sign out" onClick={() => { transport.stop(); logout(); }}>SIGN OUT</button>
+      <button className="session-chip" title="Sign out" onClick={() => { transport.stop(); simulation.stop(); logout(); }}>SIGN OUT</button>
     </header>
   );
 }

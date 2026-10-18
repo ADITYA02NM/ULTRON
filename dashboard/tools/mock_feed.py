@@ -2,24 +2,33 @@
 """ULTRON dev-only scenario publisher.
 
 DEV-ONLY. Never started by systemd. Publishes to the REAL broker so the whole
-path (mosquitto -> server.py -> WebSocket -> browser) is exercised end to end.
+path (mosquitto -> server -> WebSocket -> browser) is exercised end to end.
 
-Replays the README 4-minute demo:
-    1. quiet GREEN
-    2. unknown LAN device joins
-    3. tripwire pi3a opens
-    4. Suricata burst drives score RED then PURPLE
-    5. decay back to GREEN
-Plus failure beats: a node goes silent (stops publishing health), then the
-operator is told to kill Mosquitto to watch the header go STALE/OFFLINE.
+It tells the SAME story as the in-browser simulation
+(dashboard/web/src/lib/simulation.ts) so the two drivers never disagree. Keep
+the beats, the endpoint roster and the wording of the two files in step.
 
-Note: this mock plays the role of BOTH the detection nodes AND the Pi4 risk
-engine (it publishes ultron/risk/# too) purely so a laptop with no Pis can see
-the full dashboard. On real hardware, Pi4's sentinel-risk owns risk/# and this
-tool is never run.
+    Phase A  every node and endpoint reports in, all healthy
+    Phase B  ordinary household activity: the front door opens and closes, the
+             kettle switches on, an unfamiliar phone joins the LAN and is then
+             identified and trusted
+    Phase C  the one genuine finding of the cycle: the camera is probed for
+             default credentials (the attempt fails) plus a stale-firmware
+             advisory. The score peaks YELLOW, the operator acknowledges the
+             alert, and the score decays back to GREEN
+    Phase D  close the cycle out, everything nominal, then start again
+
+The peak is YELLOW. Most devices are healthy the whole time: this is a home
+under watch, not a system falling apart.
+
+This mock plays the role of BOTH the detection nodes AND the Pi4 risk engine (it
+publishes ultron/risk/# too), and it also answers ultron/ack/# exactly the way
+Pi3b does, so a laptop with no Pis sees the complete, working dashboard. On real
+hardware Pi4's sentinel-risk owns risk/# and this tool is never run.
+
+To watch the header go STALE/OFFLINE, stop the broker while this is running.
 
 Usage:
-    pip install paho-mqtt
     python mock_feed.py --host 127.0.0.1 --port 1883 [--user dev --pass dev]
 """
 
@@ -43,6 +52,11 @@ BANNER = r"""
 ============================================================
 """
 
+# Keep in step with dashboard/web/src/lib/simulation.ts.
+CYCLE_MS = 92000
+HEALTH_TICK_S = 4.0
+NODES = ("pi4", "pi3a", "pi3b", "esp32")
+
 
 def band_for(score: int) -> str:
     if score >= 85:
@@ -54,12 +68,50 @@ def band_for(score: int) -> str:
     return "GREEN"
 
 
+def step_score(cur: int, target: int) -> int:
+    """One 1 Hz tick of the risk engine approaching its target score.
+
+    Mirrors scorePump() in lib/simulation.ts: move by max(2, ceil(diff/6)) so a
+    big swing is brisk and a small one is calm.
+    """
+    diff = target - cur
+    if diff == 0:
+        return cur
+    stride = min(abs(diff), max(2, -(-abs(diff) // 6)))
+    return cur + (stride if diff > 0 else -stride)
+
+
+# Smart-home endpoints on the monitored LAN (dev-only stand-ins). Each one is
+# published on ultron/lan/<mac> so the IoT Topology panel paints it.
+LAN_DEVICES = (
+    {"mac": "B0:4E:26:1A:2B:3C", "ip": "192.168.100.61",
+     "vendor": "Hikvision", "known": True, "label": "IP camera"},
+    {"mac": "50:C7:BF:4D:5E:6F", "ip": "192.168.100.62",
+     "vendor": "TP-Link", "known": True, "label": "Smart plug"},
+    {"mac": "24:6F:28:7A:8B:9C", "ip": "192.168.100.63",
+     "vendor": "Espressif", "known": True, "label": "Door sensor"},
+)
+
+# Two more endpoints the narration needs: a household device already on the
+# LAN, and the phone that turns up mid-cycle.
+LAN_HOUSE = {"mac": "00:11:22:33:44:55", "ip": "192.168.100.10", "vendor": "TP-Link"}
+LAN_PHONE = {"mac": "AA:BB:CC:DD:EE:FF", "ip": "192.168.100.57", "vendor": "Apple"}
+
+
+def lan_topic(mac: str) -> str:
+    return "ultron/lan/" + mac.replace(":", "").lower()
+
+
 class Feed:
     def __init__(self, host: str, port: int, user: str | None, password: str | None) -> None:
         self.client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id="ultron-mock")
         if user:
             self.client.username_pw_set(user, password or "")
+        # Every alert we publish, so we can re-stamp it when it is acknowledged.
+        self.alerts: dict[str, dict] = {}
+        self.client.on_message = self._on_ack
         self.client.connect(host, port, keepalive=30)
+        self.client.subscribe("ultron/ack/#", qos=1)
         self.client.loop_start()
         self._n = 0
 
@@ -68,7 +120,7 @@ class Feed:
         self.client.publish(topic, data, qos=1, retain=retain)
         print(f"  -> {topic:26s} {data}")
 
-    def health(self, nodes: tuple[str, ...] = ("pi4", "pi3a", "pi3b")) -> None:
+    def health(self, nodes: tuple[str, ...] = NODES) -> None:
         for node in nodes:
             self.pub(f"ultron/health/{node}",
                      {"node": node, "up": 3600 + self._n * 10,
@@ -80,76 +132,260 @@ class Feed:
         self.pub("ultron/risk/score", {"v": score}, retain=True)
         self.pub("ultron/risk/band", {"b": band_for(score)}, retain=True)
 
+    def lan(self, dev: dict) -> None:
+        """Announce (or refresh) one endpoint on the monitored LAN."""
+        now = int(time.time())
+        self.pub(lan_topic(dev["mac"]),
+                 {"mac": dev["mac"], "ip": dev["ip"], "vendor": dev["vendor"],
+                  "known": dev.get("known", True),
+                  "first_seen": now, "last_seen": now})
+
+    def lan_all(self) -> None:
+        for dev in LAN_DEVICES:
+            self.lan(dev)
+
     def alert(self, aid: str, sev: str, title: str, src: str, body: str) -> None:
-        self.pub(f"ultron/alert/{aid}",
-                 {"id": aid, "sev": sev, "title": title, "src": src,
-                  "body": body, "ts": int(time.time()), "ack": False})
+        payload = {"id": aid, "sev": sev, "title": title, "src": src,
+                   "body": body, "ts": int(time.time()), "ack": False}
+        self.alerts[aid] = payload
+        self.pub(f"ultron/alert/{aid}", payload)
+
+    def _on_ack(self, client, userdata, msg) -> None:  # noqa: ANN001 - paho callback
+        """Pi3b's half of the demo: confirm an acknowledgement by re-stamping the
+        alert. The dashboard ignores duplicate alert ids, but the store refreshes
+        a row when the repeat carries ack=true — which is what makes the ACK
+        button actually stick instead of quietly coming undone."""
+        aid = msg.topic.rsplit("/", 1)[-1]
+        payload = self.alerts.get(aid)
+        if payload is None or payload.get("ack"):
+            return
+        stamped = dict(payload, ack=True, ack_ts=int(time.time()))
+        self.alerts[aid] = stamped
+        self.pub(f"ultron/alert/{aid}", stamped)
 
     def stop(self) -> None:
         self.client.loop_stop()
         self.client.disconnect()
 
 
+class Cycle:
+    """Plays one full cycle of the watch against the broker.
+
+    The score is pumped at 1 Hz toward a moving target and health is published
+    every 4 s, exactly the way the browser simulation's pumps behave, so the
+    gauge, the node tiles and the alert feed move identically whichever driver
+    is running.
+    """
+
+    def __init__(self, feed: Feed, n: int, score: int = 0) -> None:
+        self.feed = feed
+        self.n = n
+        self.seq = 0
+        self.score = score
+        self.target = 8
+        self.t = 0.0
+        self.tick = 0.0
+
+    def _pump(self, seconds: float) -> None:
+        deadline = time.monotonic() + seconds
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            slept = min(1.0, remaining)
+            time.sleep(slept)
+            self.t += slept
+            self.tick += slept
+            nxt = step_score(self.score, self.target)
+            if nxt != self.score:
+                self.score = nxt
+                self.feed.risk(self.score)
+            if self.tick >= HEALTH_TICK_S:
+                self.tick = 0.0
+                self.feed.health()
+
+    def at(self, ms: int, fn) -> None:  # noqa: ANN001 - small local callback
+        """Run `fn` when the cycle clock reaches `ms` milliseconds."""
+        want = ms / 1000.0
+        self._pump(max(0.0, want - self.t))
+        self.t = want
+        fn()
+
+    def lan(self, dev: dict, known: bool = True) -> None:
+        self.feed.lan({**dev, "known": known})
+
+    def alert(self, sev: str, title: str, src: str, body: str) -> None:
+        self.seq += 1
+        self.feed.alert(f"c{self.n}-{self.seq}", sev, title, src, body)
+
+
+def play_cycle(feed: Feed, n: int, score: int = 0) -> int:
+    c = Cycle(feed, n, score)
+    cam, plug, door = LAN_DEVICES
+
+    # Yesterday's alerts are done with: forget them so a long-running demo does
+    # not accumulate an unbounded registry (and so a stale ACK cannot re-stamp
+    # an alert from a previous cycle).
+    feed.alerts.clear()
+
+    # Announce the roster before the story starts so the IoT Topology panel is
+    # never empty while the first beats tick by.
+    for dev in LAN_DEVICES:
+        c.lan(dev)
+
+    # -- Phase A: every node and endpoint reports in, all healthy -------------
+
+    def a_pi4() -> None:
+        c.lan(LAN_HOUSE)
+        c.alert("info", "Pi4 governance online", "health/pi4",
+                "192.168.100.1 — mosquitto, risk engine and dashboard up. Watchdog armed.")
+
+    def a_camera() -> None:
+        c.lan(cam)
+        c.alert("info", f"{cam['label']} checked in", "detect/lan",
+                f"{cam['vendor']} {cam['ip']} — 1080p stream healthy, RTSP 554 open, uptime 6 d.")
+
+    def a_plug() -> None:
+        c.lan(plug)
+        c.alert("info", f"{plug['label']} reported in", "detect/lan",
+                f"{plug['vendor']} {plug['ip']} — relay closed, drawing 11 W, Wi-Fi −54 dBm.")
+
+    def a_door() -> None:
+        c.lan(door)
+        c.alert("info", f"{door['label']} paired", "detect/lan",
+                f"{door['label']} {door['ip']} — front door contact, battery 92%, last event 3 h ago.")
+
+    def a_node() -> None:
+        c.alert("info", "Detection node online", "health/pi3a",
+                "192.168.100.2 — Suricata 26,140 signatures loaded, LAN observer on eth0. No drops.")
+
+    # -- Phase B: ordinary household activity, nothing wrong -----------------
+
+    def b_open() -> None:
+        c.alert("info", "Front door opened", "detect/lan",
+                f"{door['label']} {door['ip']} — contact opened, resident arriving home.")
+
+    def b_close() -> None:
+        c.alert("info", "Front door closed", "detect/lan",
+                f"{door['label']} {door['ip']} — contact closed after 5 s, battery unchanged at 92%.")
+
+    def b_kettle() -> None:
+        c.target = 14
+        c.alert("info", f"{plug['label']} load changed", "detect/lan",
+                f"{plug['label']} {plug['ip']} — draw 11 W → 46 W, kettle switched on.")
+
+    def b_stream() -> None:
+        c.alert("info", f"{cam['label']} stream healthy", "detect/lan",
+                f"{cam['label']} {cam['ip']} — 1080p @ 15 fps, 0 dropped frames this hour.")
+
+    def b_join() -> None:
+        c.lan(LAN_PHONE, known=False)
+        c.alert("info", "Unfamiliar device joined", "detect/lan",
+                "AA:BB:CC:DD:EE:FF · 192.168.100.57 — first seen on the LAN, watching before trusting.")
+
+    def b_identify() -> None:
+        c.lan(LAN_PHONE, known=True)
+        c.alert("info", "Unfamiliar device identified", "detect/lan",
+                "AA:BB:CC:DD:EE:FF resolved to a household iPhone on the guest SSID — marked known.")
+
+    # -- Phase C: the one genuine finding of the cycle -----------------------
+
+    def c_probe() -> None:
+        c.target = 38
+        feed.pub("ultron/suricata/cam-default-creds",
+                 {"signature": "ET SCAN default credential probe",
+                  "severity": "yellow", "src": "suricata/eth0",
+                  "src_ip": LAN_PHONE["ip"], "dest_ip": cam["ip"],
+                  "sig_id": 2010935, "mac": cam["mac"]})
+        c.alert("yellow", f"{cam['label']} probed for default credentials", "detect/suricata",
+                f"192.168.100.57 → {cam['ip']} — 14 login attempts to the camera web UI in 30 s.")
+
+    def c_rejected() -> None:
+        c.alert("info", "Probe rejected", "detect/suricata",
+                f"All 14 attempts failed — {cam['label']} is not on default credentials. No access gained.")
+
+    def c_firmware() -> None:
+        c.alert("yellow", f"{cam['label']} firmware is stale", "detect/lan",
+                f"{cam['vendor']} {cam['ip']} — firmware v5.6.2, 14 months old, 3 known CVEs unpatched.")
+
+    def c_ack() -> None:
+        for aid, payload in list(feed.alerts.items()):
+            if not payload.get("ack"):
+                feed.pub(f"ultron/ack/{aid}", {"id": aid})
+
+    def c_decay() -> None:
+        c.target = 10
+
+    # -- Phase D: close the cycle out, everything nominal --------------------
+
+    def d_heartbeat() -> None:
+        c.alert("info", "Pi3a heartbeat steady", "health/pi4",
+                "Detection node reporting every 4 s, Suricata drop rate 0 %.")
+
+    def d_refresh() -> None:
+        feed.lan_all()
+        c.lan(LAN_HOUSE)
+        c.lan(LAN_PHONE)
+
+    def d_indicator() -> None:
+        c.alert("info", "Indicator reading GREEN", "health/esp32",
+                "ESP32-C3 OLED GREEN, LED steady — no operator action required.")
+
+    def d_nominal() -> None:
+        c.alert("info", "All endpoints nominal", "health/pi4",
+                "7/7 nodes healthy · 1 acknowledged advisory · 0 open critical. Watch continues.")
+
+    def d_ack_rest() -> None:
+        for aid, payload in list(feed.alerts.items()):
+            if not payload.get("ack"):
+                feed.pub(f"ultron/ack/{aid}", {"id": aid})
+
+    beats = (
+        (0, lambda: c.alert("info", "Watch started — narrating the home LAN", "risk/engine",
+                            f"Cycle {n} beginning. Scoring from {c.score}.")),
+        (1500, a_pi4),
+        (3000, a_camera),
+        (4500, a_plug),
+        (7500, a_door),
+        (9000, a_node),
+        (12000, b_open),
+        (17000, b_close),
+        (19500, b_kettle),
+        (22000, b_stream),
+        (25000, b_join),
+        (30000, b_identify),
+        (34000, c_probe),
+        (39000, c_rejected),
+        (41000, c_firmware),
+        (43000, c_ack),
+        (45000, c_decay),
+        (47000, d_heartbeat),
+        (55000, d_refresh),
+        (59000, d_indicator),
+        (67000, d_nominal),
+        (75000, d_ack_rest),
+        (79000, d_refresh),
+        (87000, lambda: c.alert("info", "Cycle complete — restarting watch", "risk/engine",
+                                "Everything nominal. Beginning the next sweep.")),
+    )
+
+    for at_ms, fn in beats:
+        c.at(at_ms, fn)
+
+    # Run out the remainder of the cycle so the cadence stays steady.
+    c.at(CYCLE_MS, lambda: None)
+    return c.score
+
+
 def run(feed: Feed) -> None:
-    print("\n[1] quiet GREEN")
-    for i in range(3):
-        feed.health()
-        feed.risk(4 + i)
-        time.sleep(2)
-
-    print("\n[2] unknown LAN device joins")
-    feed.pub("ultron/lan/aabbccddeeff",
-             {"mac": "AA:BB:CC:DD:EE:FF", "ip": "192.168.100.57",
-              "vendor": "Espressif", "known": False})
-    feed.risk(14)
-    feed.health()
-    time.sleep(3)
-
-    print("\n[3] tripwire pi3a opens")
-    feed.pub("ultron/tripwire/pi3a", {"node": "pi3a", "edge": "open"})
-    feed.alert("trip-pi3a-1", "yellow", "Case tripwire opened",
-               "tripwire/pi3a", "Reed switch edge on Pi3a case lid.")
-    feed.risk(38)
-    feed.health()
-    time.sleep(3)
-
-    print("\n[4] Suricata burst -> RED -> PURPLE")
-    for i, sig in enumerate([
-        "ET SCAN suspicious inbound",
-        "ET MALWARE beaconing",
-        "ET EXPLOIT attempt",
-        "ET TROJAN C2 checkin",
-    ]):
-        feed.pub(f"ultron/suricata/{i}",
-                 {"signature": sig, "severity": "red", "src": "suricata/eth0"})
-        feed.risk(60 + i * 9)
-        feed.health()
-        time.sleep(2)
-    feed.risk(92)  # PURPLE
-    feed.alert("crit-1", "purple", "Critical: sustained C2 activity",
-               "risk/engine", "Score crossed PURPLE (85). Operator paged.")
-    time.sleep(3)
-
-    print("\n[5] decay back to GREEN (-2 / 10s modelled fast)")
-    s = 92
-    while s > 4:
-        s = max(0, s - 8)
-        feed.risk(s)
-        feed.health()
-        time.sleep(1.5)
-
-    print("\n[6] failure beat: Pi3a goes silent (no more health)")
-    for _ in range(4):
-        feed.health(nodes=("pi4", "pi3b"))  # pi3a omitted -> tile ages to red
-        feed.risk(4)
-        time.sleep(3)
-
-    print("\n[7] Now KILL mosquitto to watch the header go STALE/OFFLINE:")
-    print("      sudo systemctl stop mosquitto   (Ctrl-C here when done)")
+    print("  beats mirror dashboard/web/src/lib/simulation.ts — keep them in step.")
+    print("  to watch STALE/OFFLINE, stop the broker while this runs.")
+    n = 0
+    score = 0
     while True:
-        feed.health(nodes=("pi4", "pi3b"))
-        feed.risk(3)
-        time.sleep(5)
+        n += 1
+        print(f"\n================ cycle {n} ================")
+        score = play_cycle(feed, n, score)
 
 
 def main() -> None:
@@ -159,7 +395,7 @@ def main() -> None:
     ap.add_argument("--user", default=None)
     ap.add_argument("--pass", dest="password", default=None)
     ap.add_argument("--script", default="demo", choices=["demo"],
-                    help="scenario to replay (README §7 4-minute demo)")
+                    help="scenario to replay (mirrors the browser simulation)")
     args = ap.parse_args()
 
     print(BANNER)

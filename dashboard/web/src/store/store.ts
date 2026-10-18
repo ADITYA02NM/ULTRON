@@ -128,6 +128,17 @@ export class Store {
     this.emit();
   }
 
+  /** Wipe every scrap of live/demo state. Called on sign-in AND sign-out so a
+   *  fresh session never inherits the previous operator's view: no stale
+   *  devices, events, alerts, counters, filters or command history. The auth
+   *  phase itself is preserved — setAuth() owns that. */
+  reset(): void {
+    const { authPhase, authHasOwner } = this.state;
+    this.state = { ...initial(), authPhase, authHasOwner };
+    this.seen.clear();
+    this.emit();
+  }
+
   setConn(conn: Conn): void {
     if (this.state.conn === conn) return;
     this.state = { ...this.state, conn };
@@ -318,7 +329,25 @@ export class Store {
         }
         case "alert": {
           const d = env.d as AlertD;
-          if (!d.id || this.seen.has(d.id)) break;
+          if (!d.id) break;
+          if (this.seen.has(d.id)) {
+            // A repeat id carrying ack=true is the alert node confirming an
+            // acknowledgement, not a duplicate. Refresh the row in place so the
+            // ACK button visibly sticks once the node has agreed — otherwise
+            // the panel and the node disagree and the alert silently reappears
+            // unacknowledged on every later frame.
+            if (!d.ack) break;
+            const idx = alerts.findIndex((a) => a.id === d.id);
+            if (idx < 0 || alerts[idx]!.ack) break;
+            const stamp = d.ack_ts ?? Math.floor(env.ts);
+            if (!alertsChanged) { alerts = alerts.slice(); alertsChanged = true; }
+            alerts[idx] = { ...alerts[idx]!, ack: true, ack_ts: stamp };
+            s.openCount = Math.max(0, s.openCount - 1);
+            s.ackDone += 1;
+            if (!eventsChanged) { events = events.slice(); eventsChanged = true; }
+            events = events.map((e) => (e.alertId === d.id ? { ...e, ack: true, ackTs: stamp } : e));
+            break;
+          }
           this.seen.add(d.id);
           if (!alertsChanged) { alerts = alerts.slice(); alertsChanged = true; }
           alerts.unshift(d);

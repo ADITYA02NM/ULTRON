@@ -97,6 +97,77 @@ describe("store.applyBatch", () => {
   });
 });
 
+describe("store.reset", () => {
+  it("wipes live state but preserves the auth phase", () => {
+    const s = new Store();
+    s.setAuth(true, true);
+    s.applyBatch([
+      env("score", { v: 88 }),
+      env("band", { b: "PURPLE" }),
+      env("lan", { mac: "AA:BB:CC:DD:EE:FF", ip: "192.168.100.50", vendor: "X", known: false }),
+      env("alert", { id: "z", sev: "red", title: "t", src: "s", body: "b", ack: false }),
+    ]);
+    expect(Object.keys(s.getState().devices).length).toBe(1);
+    expect(s.getState().openCount).toBe(1);
+
+    s.reset();
+
+    const st = s.getState();
+    expect(st.authPhase).toBe("ready"); // auth survives the wipe
+    expect(st.score).toBe(0);
+    expect(st.band).toBe("GREEN");
+    expect(st.alerts.length).toBe(0);
+    expect(st.events.length).toBe(0);
+    expect(Object.keys(st.devices).length).toBe(0);
+    expect(st.openCount).toBe(0);
+  });
+
+  it("leaves sign-out working after a reset", () => {
+    const s = new Store();
+    s.setAuth(true, true);
+    s.reset();
+    s.setAuth(false, true);
+    expect(s.getState().authPhase).toBe("login");
+  });
+});
+
+describe("alert acknowledgement round-trip", () => {
+  it("refreshes the row when the node re-stamps a repeat id with ack=true", () => {
+    const s = new Store();
+    s.setAuth(true, true);
+    s.applyBatch([env("alert", { id: "c1-1", sev: "yellow", title: "t", src: "s", body: "b", ack: false })]);
+    expect(s.getState().alerts).toHaveLength(1);
+    expect(s.getState().openCount).toBe(1);
+    expect(s.getState().ackDone).toBe(0);
+
+    s.applyBatch([
+      env("alert", { id: "c1-1", sev: "yellow", title: "t", src: "s", body: "b", ack: true, ack_ts: 1700000000 }),
+    ]);
+    const st = s.getState();
+    expect(st.alerts).toHaveLength(1);
+    expect(st.alerts[0]!.ack).toBe(true);
+    expect(st.alerts[0]!.ack_ts).toBe(1700000000);
+    expect(st.openCount).toBe(0);
+    expect(st.ackDone).toBe(1);
+  });
+
+  it("ignores a plain duplicate and never double-counts one acknowledgement", () => {
+    const s = new Store();
+    s.setAuth(true, true);
+    s.applyBatch([env("alert", { id: "c1-2", sev: "info", title: "t", src: "s", body: "b", ack: false })]);
+    s.applyBatch([env("alert", { id: "c1-2", sev: "info", title: "t", src: "s", body: "b", ack: false })]);
+    expect(s.getState().alerts).toHaveLength(1);
+    expect(s.getState().ackTotal).toBe(1);
+    expect(s.getState().openCount).toBe(1);
+
+    s.applyBatch([env("alert", { id: "c1-2", sev: "info", title: "t", src: "s", body: "b", ack: true, ack_ts: 1 })]);
+    s.applyBatch([env("alert", { id: "c1-2", sev: "info", title: "t", src: "s", body: "b", ack: true, ack_ts: 1 })]);
+    expect(s.getState().alerts).toHaveLength(1);
+    expect(s.getState().ackDone).toBe(1);
+    expect(s.getState().openCount).toBe(0);
+  });
+});
+
 describe("filterHistory", () => {
   const nowMs = 1_000_000_000_000; // fixed epoch ms
   it("drops points older than the range span", () => {
