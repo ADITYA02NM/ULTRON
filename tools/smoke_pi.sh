@@ -128,17 +128,12 @@ export ULTRON_HTTP_HOST="$MGMT_IP"
 # Generate one-time enrollment token
 echo "── Enrollment token ──"
 TOKEN=$($PY -c "
-from server.auth import _db_path, _hash
-from server import auth
-import secrets, sqlite3
-db = sqlite3.connect(str(auth._db_path()))
-auth._ensure_schema(db)
-tok = secrets.token_urlsafe(32)
-h = auth._hash(tok)
-db.execute('INSERT OR REPLACE INTO enrollment_tokens (token_hash, used) VALUES (?, 0)', (h,))
-db.commit()
-db.close()
-print(tok)
+from server.auth_db import AuthDB
+from server.config import load
+# The supported way to mint an enrollment token. The old inline SQL
+# reached into server.auth internals (_db_path/_hash/_ensure_schema)
+# that have not existed since the auth rewrite.
+print(AuthDB(load().auth_db).create_enrollment_token(ttl=900))
 " 2>/dev/null) || true
 
 if [[ -n "$TOKEN" ]]; then
