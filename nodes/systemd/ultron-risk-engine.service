@@ -1,0 +1,36 @@
+[Unit]
+Description=ULTRON risk engine (Pi4 governance)
+Documentation=https://github.com/ADITYA02NM/ULTRON
+After=network-online.target mosquitto.service
+Wants=network-online.target
+Requires=mosquitto.service
+
+[Service]
+Type=simple
+User=ultron
+Group=ultron
+WorkingDirectory=/opt/ultron/nodes
+ExecStart=/opt/ultron/venv/bin/python /opt/ultron/nodes/pi4/risk_engine.py --serial /dev/ttyACM0
+Restart=on-failure
+RestartSec=5
+# The shelf indicator hangs off USB 2.0; dialout is the group that owns it.
+SupplementaryGroups=dialout
+DeviceAllow=char-tty rw
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+ReadWritePaths=/var/lib/ultron
+
+[Install]
+WantedBy=multi-user.target

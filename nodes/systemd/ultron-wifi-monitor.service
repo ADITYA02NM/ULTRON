@@ -1,0 +1,37 @@
+[Unit]
+Description=ULTRON WiFi monitor (Pi3a detection, TL-WN722N)
+Documentation=https://github.com/ADITYA02NM/ULTRON
+After=network-online.target mosquitto.service
+Wants=network-online.target
+Requires=mosquitto.service
+
+[Service]
+Type=simple
+User=ultron
+Group=ultron
+WorkingDirectory=/opt/ultron/nodes
+ExecStart=/opt/ultron/venv/bin/python /opt/ultron/nodes/pi3a/wifi_monitor.py --interface wlan1 --state /var/lib/ultron/wifi.json --trusted SENTINEL-SECURE --monitor
+Restart=on-failure
+RestartSec=5
+StateDirectory=ultron
+# Listening only: the adapter never associates, so there is no frame this
+# appliance can be talked into answering.
+CapabilityBoundingSet=CAP_NET_RAW CAP_NET_ADMIN
+AmbientCapabilities=CAP_NET_RAW CAP_NET_ADMIN
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,34 @@
+[Unit]
+Description=ULTRON LAN watch (Pi3a detection)
+Documentation=https://github.com/ADITYA02NM/ULTRON
+After=network-online.target mosquitto.service
+Wants=network-online.target
+Requires=mosquitto.service
+
+[Service]
+Type=simple
+User=ultron
+Group=ultron
+WorkingDirectory=/opt/ultron/nodes
+ExecStart=/opt/ultron/venv/bin/python /opt/ultron/nodes/pi3a/lan_watch.py --interface eth0 --state /var/lib/ultron/lan.json
+Restart=on-failure
+RestartSec=5
+StateDirectory=ultron
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+# 'ip neigh' only - no raw socket and no CAP_NET_ADMIN required.
+
+[Install]
+WantedBy=multi-user.target

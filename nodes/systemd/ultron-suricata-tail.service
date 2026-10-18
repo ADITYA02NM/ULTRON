@@ -1,0 +1,34 @@
+[Unit]
+Description=ULTRON Suricata eve.json forwarder (Pi3a detection)
+Documentation=https://github.com/ADITYA02NM/ULTRON
+After=network-online.target mosquitto.service suricata.service
+Wants=network-online.target
+Requires=mosquitto.service
+
+[Service]
+Type=simple
+User=ultron
+Group=ultron
+WorkingDirectory=/opt/ultron/nodes
+ExecStart=/opt/ultron/venv/bin/python /opt/ultron/nodes/pi3a/suricata_tail.py --eve /var/log/suricata/eve.json
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+# Read-only view of the IDS log. This node never scores its own findings.
+ReadOnlyPaths=/var/log/suricata
+
+[Install]
+WantedBy=multi-user.target

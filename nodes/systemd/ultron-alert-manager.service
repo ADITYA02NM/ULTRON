@@ -1,0 +1,36 @@
+[Unit]
+Description=ULTRON alert manager (Pi3b alert) - sole writer of the evidence vault
+Documentation=https://github.com/ADITYA02NM/ULTRON
+After=network-online.target mosquitto.service mnt-pendrive.mount
+Wants=network-online.target
+Requires=mosquitto.service
+
+[Service]
+Type=simple
+User=ultron
+Group=ultron
+WorkingDirectory=/opt/ultron/nodes
+# SMTP credentials live outside the unit so they are not in version control.
+EnvironmentFile=-/etc/ultron/alert.env
+ExecStart=/opt/ultron/venv/bin/python /opt/ultron/nodes/pi3b/alert_manager.py --db /mnt/pendrive/ultron/ultron.db --smtp-host ${ULTRON_SMTP_HOST} --smtp-user ${ULTRON_SMTP_USER} --smtp-pass ${ULTRON_SMTP_PASS} --mail-to ${ULTRON_MAIL_TO}
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+# This node is the one process allowed to write the vault.
+ReadWritePaths=/mnt/pendrive/ultron
+
+[Install]
+WantedBy=multi-user.target

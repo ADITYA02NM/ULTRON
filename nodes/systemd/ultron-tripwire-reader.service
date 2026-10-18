@@ -1,0 +1,36 @@
+[Unit]
+Description=ULTRON case tripwire reader (Pi3a detection)
+Documentation=https://github.com/ADITYA02NM/ULTRON
+After=network-online.target mosquitto.service
+Wants=network-online.target
+Requires=mosquitto.service
+
+[Service]
+Type=simple
+User=ultron
+Group=ultron
+WorkingDirectory=/opt/ultron/nodes
+ExecStart=/opt/ultron/venv/bin/python /opt/ultron/nodes/pi3a/tripwire_reader.py --serial /dev/ttyUSB0 --node pi3a
+Restart=on-failure
+RestartSec=5
+# The ESP32-WROOM presents as a USB serial device.
+SupplementaryGroups=dialout
+DeviceAllow=char-tty rw
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+ReadWritePaths=/var/lib/ultron
+
+[Install]
+WantedBy=multi-user.target
