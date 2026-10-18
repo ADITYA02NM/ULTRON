@@ -80,9 +80,9 @@ header {
   font-family: var(--sans);
 }
 .chip .led { width: var(--dot-md); height: var(--dot-md); border-radius: 50%; background: var(--muted-2); }
-.chip.live .led { background: var(--green); box-shadow: 0 0 var(--glow-blur) var(--green); }
-.chip.stale .led { background: var(--yellow); box-shadow: 0 0 var(--glow-blur) var(--yellow); }
-.chip.offline .led { background: var(--red); box-shadow: 0 0 var(--glow-blur) var(--red); }
+.chip.live .led { background: var(--green); }
+.chip.stale .led { background: var(--yellow); }
+.chip.offline .led { background: var(--red); }
 .chip .cursor {
   width: 1px; height: var(--dot-lg); background: var(--accent); display: inline-block;
   opacity: 0.6;
@@ -224,7 +224,7 @@ header {
 .twin .dev-label { font-family: var(--mono); font-size: var(--fs-2xs); fill: var(--muted); }
 .twin .cable.dead { stroke-dasharray: 4 4; }
 .twin .pulse { stroke: var(--accent); stroke-width: 2; fill: none;
-  stroke-dasharray: 8 200; filter: drop-shadow(0 0 var(--glow-blur) var(--accent)); }
+  stroke-dasharray: 8 200; }
 .twin .status { r: 4; fill: none; stroke: var(--muted-2); stroke-width: var(--stroke); }
 .twin .lid { transition: transform var(--dur) var(--ease); transform-box: fill-box; transform-origin: bottom left; }
 .twin .lid.open { transform: rotate(-42deg) translateY(-2px); }
@@ -239,7 +239,7 @@ header {
 }
 .stage.hot { color: var(--text); border-color: var(--accent-line); box-shadow: inset 0 0 0 1px var(--accent-line); }
 .stage .dot { width: var(--dot-sm); height: var(--dot-sm); border-radius: 50%; background: var(--muted-2); }
-.stage.hot .dot { background: var(--accent); box-shadow: 0 0 var(--glow-blur) var(--accent); }
+.stage.hot .dot { background: var(--accent); }
 .arrow { color: var(--muted-2); font-size: var(--fs-sm); }
 .lat { margin-left: auto; font-family: var(--mono); font-size: var(--fs-md); color: var(--muted); font-variant-numeric: tabular-nums; }
 .lat b { color: var(--text); }
@@ -263,6 +263,78 @@ header {
 .alert .txt { font-size: var(--fs-lg); color: var(--muted); margin-top: var(--space-1); word-break: break-word; }
 .alert.acked { opacity: .5; }
 .alert .stamp { font-family: var(--mono); font-size: var(--fs-md); color: var(--green); margin-top: var(--space-1); }
+
+/* -- event intel box: what is behind the event, on hover or focus --------- */
+.alert.has-intel { cursor: help; }
+.alert.has-intel:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
+
+.intel {
+  position: fixed;
+  z-index: var(--intel-z);
+  width: var(--intel-w);
+  max-width: calc(100vw - var(--space-4));
+  padding: var(--space-3);
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius);
+  background: var(--panel-2);
+  box-shadow: var(--shadow-pop);
+  opacity: 0;
+  /* read-only: the pointer must never be able to land on it */
+  pointer-events: none;
+}
+.intel.pending { visibility: hidden; }
+.intel:not(.pending) { opacity: 1; transition: opacity var(--dur-intel) var(--ease); }
+
+.intel-hd {
+  display: flex;
+  gap: var(--space-2);
+  align-items: baseline;
+  padding-bottom: var(--space-2);
+  margin-bottom: var(--space-2);
+  border-bottom: 1px solid var(--border);
+}
+.intel-kind {
+  font-family: var(--mono);
+  font-size: var(--fs-2xs);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.intel-src { margin-left: auto; font-family: var(--mono); font-size: var(--fs-2xs); color: var(--muted-2); }
+
+.intel-rows { margin: 0; }
+.intel-row { display: flex; gap: var(--space-2); align-items: baseline; }
+.intel-row + .intel-row { margin-top: var(--space-1); }
+.intel-row dt {
+  flex: none;
+  width: var(--intel-key-w);
+  padding-top: var(--space-1);
+  font-family: var(--mono);
+  font-size: var(--fs-2xs);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted-2);
+}
+.intel-row dd {
+  margin: 0;
+  min-width: 0;
+  font-family: var(--mono);
+  font-size: var(--fs-xs);
+  color: var(--text);
+  word-break: break-word;
+}
+.intel-cmd { color: var(--muted); }
+
+.intel-means { margin: var(--space-2) 0 0; font-size: var(--fs-md); line-height: 1.45; color: var(--text); }
+.intel-caution { margin: var(--space-2) 0 0; font-size: var(--fs-md); line-height: 1.45; color: var(--muted); }
+.intel-caution-tag {
+  margin-right: var(--space-1);
+  font-family: var(--mono);
+  font-size: var(--fs-2xs);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--yellow);
+}
 .ackbtn {
   align-self: center; font-size: var(--fs-sm); font-weight: 600; letter-spacing: .06em; cursor: pointer;
   color: var(--accent); background: transparent; border: 1px solid var(--accent-line);
@@ -386,7 +458,7 @@ header {
 .oled { image-rendering: pixelated; background: var(--oled-bg); border: 1px solid var(--border-2); border-radius: 2px; }
 .leds { display: flex; gap: var(--space-1); }
 .led-dot { width: var(--dot-lg); height: var(--dot-lg); border-radius: 2px; background: var(--panel-2); border: 1px solid var(--border-2); }
-.led-dot.on { background: var(--accent); box-shadow: 0 0 var(--glow-blur) var(--accent); }
+.led-dot.on { background: var(--accent); }
 
 /* ---- node tiles ---- */
 .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); }
@@ -423,6 +495,27 @@ canvas.spark {
 canvas.spark-compact { height: var(--spark-h-compact); }
 .histnote { font-family: var(--mono); font-size: var(--fs-sm); color: var(--muted); margin-top: var(--space-1); }
 .hist-compact { margin-top: var(--space-2); }
+/* While a drill runs the canvas repaints every frame. The state is marked with a
+   hairline inset ring rather than a halo, which is what a halo would cost in
+   legibility on a graph the operator is meant to read. */
+canvas.spark-live { box-shadow: inset 0 0 0 1px var(--accent-line); }
+.hist-range { display: flex; gap: var(--space-1); margin-top: var(--space-1); }
+.hist-range-btn {
+  font-family: var(--mono); font-size: var(--fs-2xs); letter-spacing: .06em; text-transform: uppercase;
+  color: var(--muted); background: var(--panel-2); border: 1px solid var(--border-2);
+  border-radius: var(--radius-pill); padding: var(--space-1) var(--space-2); cursor: pointer;
+}
+.hist-range-btn:hover { color: var(--text); border-color: var(--border); }
+.hist-range-btn.active { color: var(--accent); border-color: var(--accent-line); }
+
+/* ---- live drill ---- */
+.live-tag {
+  font-family: var(--mono); font-size: var(--fs-2xs); letter-spacing: .08em; text-transform: uppercase;
+  color: var(--accent); border: 1px solid var(--accent-line); border-radius: var(--radius-pill);
+  padding: 0 var(--space-1); margin-left: var(--space-1); vertical-align: middle;
+}
+.risk .ring-cap { opacity: 0; transition: opacity var(--dur) var(--ease); }
+.risk.live .ring-cap { opacity: 1; }
 
 /* ---- stats ---- */
 .stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: var(--space-2); }

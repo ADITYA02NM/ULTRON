@@ -17,18 +17,30 @@ function RiskPanelImpl() {
   const band = useStore((s) => s.band);
   const conn = useStore((s) => s.conn);
   const scoreTs = useStore((s) => s.scoreTs);
+  const simRunning = useStore((s) => s.simRunning);
   const now = useNow(1000);
   const reduce = useReducedMotion();
   const stale = conn !== "live";
   const numRef = useRef<HTMLSpanElement>(null);
   const valRef = useRef<SVGCircleElement>(null);
+  const capRef = useRef<SVGCircleElement>(null);
   const prev = useRef(0);
   const raf = useRef(0);
+  // The store callback below is created once, so read liveness through a ref
+  // rather than restating the effect every time a drill starts or stops.
+  const liveRef = useRef(false);
+  liveRef.current = simRunning;
 
   useEffect(() => {
     const paint = (v: number) => {
       if (numRef.current) numRef.current.textContent = String(Math.round(v));
       if (valRef.current) valRef.current.style.strokeDashoffset = String(C * (1 - v / 100));
+      if (capRef.current) {
+        // Keep the cap on the head of the arc, so the gauge reads as a needle.
+        const a = -Math.PI / 2 + (v / 100) * 2 * Math.PI;
+        capRef.current.setAttribute("cx", String(CX + R * Math.cos(a)));
+        capRef.current.setAttribute("cy", String(CY + R * Math.sin(a)));
+      }
     };
     const unsub = store.subscribe(() => {
       const target = store.getState().score;
@@ -37,7 +49,8 @@ function RiskPanelImpl() {
       prev.current = target;
       if (reduce) { paint(target); return; }
       const t0 = performance.now();
-      const dur = 300;
+      // A drill steps the score in jumps, so the arc chases it faster while live.
+      const dur = liveRef.current ? 180 : 300;
       cancelAnimationFrame(raf.current);
       const step = (t: number) => {
         const k = Math.min(1, (t - t0) / dur);
@@ -52,13 +65,14 @@ function RiskPanelImpl() {
   }, [reduce]);
 
   return (
-    <div className="risk">
+    <div className={"risk" + (simRunning ? " live" : "")}>
       <svg className="ring" viewBox="0 0 180 180" role="img" aria-label="Risk gauge">
         <circle cx={CX} cy={CY} r={R} fill="none" stroke="var(--border-2)" strokeWidth="2" />
         <circle ref={valRef} cx={CX} cy={CY} r={R} fill="none" stroke="var(--accent)" strokeWidth="6"
           strokeLinecap="butt" strokeDasharray={C} strokeDashoffset={C}
           transform={`rotate(-90 ${CX} ${CY})`}
           style={{ transition: reduce ? "none" : "stroke var(--dur)" }} />
+        <circle ref={capRef} className="ring-cap" cx={CX} cy={CY - R} r={3.5} fill="var(--accent)" />
         {[30, 60, 85].map((v) => {
           const p = tickPos(v / 100, R - 5, R + 5);
           const l = tickPos(v / 100, R + 13, R + 13);
@@ -75,7 +89,10 @@ function RiskPanelImpl() {
           <span className={"numeral" + (stale ? " stale" : "")} ref={numRef}>0</span>
           <span className="of"> /100</span>
         </div>
-        <div className="band">{band}</div>
+        <div className="band">
+          {band}
+          {simRunning && <span className="live-tag">drill</span>}
+        </div>
         {stale
           ? <div className="posture">last known · {ago(scoreTs, now)} ago</div>
           : <div className="posture">{POSTURE[band]}</div>}

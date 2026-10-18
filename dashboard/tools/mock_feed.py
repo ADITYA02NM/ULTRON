@@ -306,15 +306,22 @@ def play_cycle(feed: Feed, n: int, score: int = 0) -> int:
                   "src_ip": LAN_PHONE["ip"], "dest_ip": cam["ip"],
                   "sig_id": 2010935, "mac": cam["mac"]})
         c.alert("yellow", f"{cam['label']} probed for default credentials", "detect/suricata",
-                f"192.168.100.57 → {cam['ip']} — 14 login attempts to the camera web UI in 30 s.")
+                f"hydra -l admin -P top-1000.txt {cam['ip']} http-post-form "
+                "\"/cgi-bin/login:user=^USER^&pass=^PASS^:F=incorrect\" — 14 POSTs in 30 s, "
+                "every one a 401. ET SCAN default credential probe (sid 2010935). "
+                "T1110.001 · Brute Force: Password Guessing.")
 
     def c_rejected() -> None:
         c.alert("info", "Probe rejected", "detect/suricata",
-                f"All 14 attempts failed — {cam['label']} is not on default credentials. No access gained.")
+                f"All 14 attempts returned 401 with no session cookie — {cam['label']} is not on "
+                "default credentials, and hydra never got past the login form. No access gained.")
 
     def c_firmware() -> None:
         c.alert("yellow", f"{cam['label']} firmware is stale", "detect/lan",
-                f"{cam['vendor']} {cam['ip']} — firmware v5.6.2, 14 months old, 3 known CVEs unpatched.")
+                f"{cam['vendor']} {cam['ip']} — running v5.6.2 against the vendor's v5.7.16, 14 "
+                "months behind, and the update manifest carries no signature. Unpatched: "
+                "CVE-2021-36260 (command injection, CVSS 9.8) and CVE-2017-7921 (auth bypass, "
+                "CVSS 8.6). T1190 · Exploit Public-Facing Application.")
 
     def c_ack() -> None:
         for aid, payload in list(feed.alerts.items()):
@@ -463,6 +470,24 @@ def play_stress(feed: Feed, n: int, score: int = 0) -> int:
                 "AA:BB:CC:DD:EE:FF resolved to a household iPhone on the guest SSID — marked known.")
 
     # -- Phase C: YELLOW — reconnaissance ------------------------------------
+    #
+    # The signature names and sids below are illustrative fixtures, not copies of
+    # a live ruleset, and the CVE ids name the class of flaw the story narrates
+    # rather than a result read off this rig. The dashboard's lib/eventIntel.ts
+    # expands each of these titles into the same detail on hover, so the two
+    # files are meant to be read together.
+
+    def y_scan() -> None:
+        feed.pub("ultron/suricata/cam-nmap-scan",
+                 {"signature": "ET SCAN nmap -sS window 1024",
+                  "severity": "yellow", "src": "suricata/eth0",
+                  "src_ip": LAN_PHONE["ip"], "dest_ip": cam["ip"],
+                  "sig_id": 2009582, "mac": cam["mac"]})
+        c.alert("yellow", "nmap port scan from the guest network", "detect/suricata",
+                f"nmap -sS -Pn -p 1-1024,554,8000,8443 --open {cam['ip']} — 1,027 probes in 4 s, "
+                "matched ET SCAN nmap -sS window 1024 (sid 2009582). "
+                "T1046 · Network Service Discovery. The camera answered on 80/tcp and RTSP "
+                "554/tcp. Being visible is not the same as being compromised — yet.")
 
     def y_probe() -> None:
         c.target = 38
@@ -472,18 +497,26 @@ def play_stress(feed: Feed, n: int, score: int = 0) -> int:
                   "src_ip": LAN_PHONE["ip"], "dest_ip": cam["ip"],
                   "sig_id": 2010935, "mac": cam["mac"]})
         c.alert("yellow", f"{cam['label']} probed for default credentials", "detect/suricata",
-                f"192.168.100.57 → {cam['ip']} — 14 login attempts to the camera web UI in 30 s.")
+                f"hydra -l admin -P top-1000.txt {cam['ip']} http-post-form "
+                "\"/cgi-bin/login:user=^USER^&pass=^PASS^:F=incorrect\" — 14 POSTs in 30 s, "
+                "every one a 401. ET SCAN default credential probe (sid 2010935). "
+                "T1110.001 · Brute Force: Password Guessing.")
 
     def y_rejected() -> None:
         c.alert("info", "Probe rejected", "detect/suricata",
-                f"All 14 attempts failed — {cam['label']} is not on default credentials. No access gained.")
+                f"All 14 attempts returned 401 with no session cookie — {cam['label']} is not on "
+                "default credentials, and hydra never got past the login form. No access gained.")
 
     def y_firmware() -> None:
         c.target = 46
         c.alert("yellow", f"{cam['label']} firmware is stale", "detect/lan",
-                f"{cam['vendor']} {cam['ip']} — firmware v5.6.2, 14 months old, 3 known CVEs unpatched.")
+                f"{cam['vendor']} {cam['ip']} — running v5.6.2 against the vendor's v5.7.16, 14 "
+                "months behind, and the update manifest carries no signature. Unpatched: "
+                "CVE-2021-36260 (command injection, CVSS 9.8) and CVE-2017-7921 (auth bypass, "
+                "CVSS 8.6). T1190 · Exploit Public-Facing Application.")
         c.alert("yellow", "Indicator reading YELLOW", "health/esp32",
-                "ESP32-C3 OLED YELLOW — advisory only, no operator action required yet.")
+                "ESP32-C3 OLED YELLOW, LED slow blink — advisory only, no operator action "
+                "required yet.")
 
     # -- Phase D: RED — it got in --------------------------------------------
 
@@ -495,20 +528,26 @@ def play_stress(feed: Feed, n: int, score: int = 0) -> int:
                   "src_ip": cam["ip"], "dest_ip": "203.0.113.44",
                   "sig_id": 2027751, "mac": cam["mac"]})
         c.alert("red", f"{cam['label']} beaconing to an unknown host", "detect/suricata",
-                f"{cam['ip']} → 203.0.113.44:8443 — 60 s jitter, 312 B POSTs, TLS certificate "
-                "4 days old. Pattern matches command-and-control.")
+                f"{cam['ip']} → 203.0.113.44:8443/tcp — 312 B POSTs every 60 s ±4 s jitter, 47 "
+                "beacons so far, TLS certificate issued 4 days ago by an unknown CA. "
+                "ET TROJAN Possible C2 Beacon (POST) sid 2027751. "
+                "T1071.001 · Application Layer Protocol: Web Protocols. Cadence is behavioural "
+                "evidence — it does not name who is on the far end.")
 
     def r_unsigned() -> None:
         c.target = 76
         c.alert("red", f"{plug['label']} fetched unsigned firmware", "detect/lan",
-                f"{plug['ip']} — 2.4 MB image pulled over plain HTTP from ota-cdn.lan with no "
-                "signature. The device is now running code its vendor never published.")
+                f"{plug['ip']} — 2.4 MB image pulled over plain HTTP/80 from ota-cdn.lan with no "
+                "signature and no TLS, then written straight to the boot partition. The device is "
+                "now running code its vendor never published. "
+                "T1553 · Subvert Trust Controls.")
 
     def r_cve() -> None:
         c.target = 82
         c.alert("red", f"{cam['label']} exploit attempt succeeded", "detect/suricata",
-                "CVE-2021-36260 — 1 of 14 crafted requests returned HTTP 200 with a shell banner. "
-                "Treating the camera as compromised.")
+                f"CVE-2021-36260 — 1 of 14 crafted requests to {cam['ip']}/SDK/webLanguage "
+                "returned HTTP 200 carrying a shell banner. ET EXPLOIT Hikvision IP Camera "
+                "Command Injection (sid 2017956). Treating the camera as compromised.")
         c.alert("red", "Indicator reading RED", "health/esp32",
                 "ESP32-C3 OLED RED, LED solid — operator attention required.")
 
@@ -522,20 +561,25 @@ def play_stress(feed: Feed, n: int, score: int = 0) -> int:
                   "src_ip": cam["ip"], "dest_ip": "192.168.100.2",
                   "sig_id": 2001219, "mac": cam["mac"]})
         c.alert("purple", "Lateral movement: camera → Pi4", "detect/suricata",
-                f"{cam['ip']} → 192.168.100.2:22 — 240 authentication attempts in 40 s against the "
-                "governance node. Dropped by the nftables set on the third retry.")
+                f"hydra -l root -P rockyou.txt ssh://192.168.100.2 -t 4 -f — 240 authentication "
+                f"attempts in 40 s from {cam['ip']} against the governance node. "
+                "ET SCAN SSH Brute Force from IoC Host (sid 2001219). "
+                "T1021.004 · Remote Services: SSH. Dropped by the nftables set on the third retry.")
 
     def p_exfil() -> None:
         c.target = 94
         c.alert("purple", "Credential harvest attempt on Pi4", "detect/suricata",
-                "The camera's session tried to write /etc/shadow and ~/.ssh/authorized_keys. "
-                "Both denied — the API surface is read-only and the audit log is append-only.")
+                "The camera's session opened /etc/shadow and ~/.ssh/authorized_keys for write. "
+                "Both denied: the API surface is read-only and the audit log is append-only, so "
+                "the attempt is recorded and the files are unchanged. "
+                "T1003.008 · OS Credential Dumping: /etc/passwd and /etc/shadow.")
 
     def p_contain() -> None:
         c.target = 90
         c.alert("purple", "Containment: camera quarantined", "health/pi4",
-                f"{cam['ip']} moved to the quarantine VLAN, DNS sinkholed, RTSP credentials "
-                "revoked. Lateral path closed; the rest of the home is unaffected.")
+                f"{cam['ip']} moved to the quarantine VLAN (802.1Q tag 90), DNS sinkholed to "
+                "0.0.0.0, RTSP credentials revoked and its switch port disabled. The lateral path "
+                "is closed; the rest of the home is unaffected.")
 
     # -- Phase F: wind down ---------------------------------------------------
 
@@ -576,6 +620,7 @@ def play_stress(feed: Feed, n: int, score: int = 0) -> int:
         (5000, b_open),
         (5800, b_close),
         (6600, b_kettle),
+        (6800, y_scan),
         (7000, b_join),
         (7500, b_identify),
         (8000, y_probe),

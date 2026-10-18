@@ -114,7 +114,9 @@
   --bar-w-1: 3px;
   --bar-w-2: 4px;
   --bar-w-3: 5px;
-  --glow-blur: 4px;
+  /* live drill: one stretch beat, shared by the ring and the sparkline so the two
+     read as a single system rather than two independent loops */
+  --dur-live: 1100ms;
   --blur-sm: 3px;
   --blur-md: 6px;
   --radius-pill: 10px;
@@ -143,6 +145,13 @@
   --dur-boot: 2.4s;
   --dur-boot-wave: 2.6s;
   --dur-boot-spin: 18s;
+  /* event intel box: sized for a signature name or a short command line */
+  --dur-intel: 140ms;
+  --intel-w: 22rem;
+  --intel-gap: 0.5rem;
+  --intel-key-w: 4.25rem;
+  --intel-z: 60;
+  --shadow-pop: 0 0.5rem 1.5rem oklch(0 0 0 / 0.45);
   --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
 }
 
