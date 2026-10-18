@@ -195,17 +195,28 @@ class AuthDB:
 
     def create_session(
         self, credential_id: str, ip: str | None = None,
-        ttl: int = 3600,
+        ttl: int = 3600, *, enforce_credential_fkey: bool = True,
     ) -> str:
         sid = secrets.token_urlsafe(32)
         sid_hash = _sha256(sid)
         now = time.time()
-        self._db().execute(
+        db = self._db()
+        if not enforce_credential_fkey:
+            # sessions.credential_id references credentials(id) and foreign
+            # keys are ON. A skip/demo session can exist before any passkey is
+            # registered, so seed a revoked placeholder row to satisfy the FK.
+            db.execute(
+                "INSERT OR IGNORE INTO credentials "
+                "(id, public_key, sign_count, created_at, revoked, backed_up) "
+                "VALUES (?, zeroblob(0), 0, ?, 1, 0)",
+                (credential_id, now),
+            )
+        db.execute(
             "INSERT INTO sessions (id_hash, created_at, expires_at, credential_id, ip) "
             "VALUES (?, ?, ?, ?, ?)",
             (sid_hash, now, now + ttl, credential_id, ip),
         )
-        self._db().commit()
+        db.commit()
         return sid
 
     def validate_session(self, sid: str) -> Session | None:

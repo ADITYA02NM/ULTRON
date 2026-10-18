@@ -14,6 +14,8 @@ Route table (all under /auth/):
   POST /auth/logout             end session
   GET  /auth/credentials        list credentials (authenticated)
   DELETE /auth/credentials/{id} revoke a credential (authenticated)
+  POST /auth/demo               LAN access-code sign-in (if ULTRON_DEMO_CODE set)
+  POST /auth/skip               local skip without a passkey (rehearsal only)
 """
 
 from __future__ import annotations
@@ -144,17 +146,34 @@ def _require_session(request: web.Request) -> str:
 
 # ── Setup (token-gated first credential) ─────────────────────────────────── #
 
+def _is_loopback(request: web.Request) -> bool:
+    """True when the request came from this machine (localhost-only setup)."""
+    return (request.remote or "") in (
+        "127.0.0.1", "::1", "::ffff:127.0.0.1", "localhost",
+    )
+
+
 async def handle_setup(request: web.Request) -> web.Response:
     auth_db = _get_auth_db(request)
     _rate_guard(request, auth_db)
 
     body = await request.json()
-    token = body.get("token", "")
-    if not auth_db.consume_enrollment_token(token):
-        auth_db.audit("setup_bad_token", ip=request.remote)
-        raise web.HTTPForbidden(text="Invalid or expired enrollment token")
+    token = str(body.get("token", "") or "")
 
-    auth_db.audit("setup_token_consumed", ip=request.remote)
+    if token:
+        if not auth_db.consume_enrollment_token(token):
+            auth_db.audit("setup_bad_token", ip=request.remote)
+            raise web.HTTPForbidden(text="Invalid or expired enrollment token")
+        auth_db.audit("setup_token_consumed", ip=request.remote)
+    elif auth_db.has_owner() or not _is_loopback(request):
+        # No token supplied: allowed only for the FIRST owner from this very
+        # machine. Any later registration, or any request arriving from the
+        # network, still needs an enrollment token.
+        auth_db.audit("setup_no_token_refused", ip=request.remote)
+        raise web.HTTPForbidden(text="Enrollment token required")
+    else:
+        auth_db.audit("setup_local_first_owner", ip=request.remote)
+
 
     rp_id = _get_rp_id(request)
     rp_name = _get_rp_name(request)
@@ -466,6 +485,80 @@ async def handle_revoke_credential(request: web.Request) -> web.Response:
     return web.json_response({"status": "ok"})
 
 
+# ── Demo / LAN access + skip (optional escape hatches) ───────────────────── #
+
+DEMO_CREDENTIAL_ID = "demo-lan"
+SKIP_CREDENTIAL_ID = "skip-local"
+
+
+def _demo_code(request: web.Request) -> str:
+    return str(request.app.get("demo_code") or "")
+
+
+def _issue_session(
+    request: web.Request, auth_db: AuthDB, placeholder_id: str,
+    *, event: str,
+) -> str:
+    """Mint a session for the first live credential, or a placeholder row.
+
+    The placeholder path is why create_session() takes
+    ``enforce_credential_fkey=False``: a session can exist with no passkey.
+    """
+    principals = [c.id for c in auth_db.list_credentials() if not c.revoked]
+    if principals:
+        sid = auth_db.create_session(
+            principals[0], ip=request.remote, ttl=SESSION_TTL,
+        )
+        auth_db.audit(event, ip=request.remote, credential_id=placeholder_id)
+    else:
+        sid = auth_db.create_session(
+            placeholder_id, ip=request.remote, ttl=SESSION_TTL,
+            enforce_credential_fkey=False,
+        )
+        auth_db.audit(f"{event}_no_owner", ip=request.remote,
+                      credential_id=placeholder_id)
+        LOG.warning("%s session issued with no registered passkey", event)
+    return sid
+
+
+async def handle_demo(request: web.Request) -> web.Response:
+    """Sign in with the printed LAN access code (demo rig only)."""
+    code_cfg = _demo_code(request)
+    if not code_cfg:
+        raise web.HTTPNotFound(text="LAN access code not configured")
+
+    auth_db = _get_auth_db(request)
+    _rate_guard(request, auth_db)
+
+    try:
+        body = await request.json()
+    except ValueError as e:
+        raise web.HTTPBadRequest(text="JSON body required") from e
+
+    given = str(body.get("code", ""))
+    if not given or not secrets.compare_digest(given, code_cfg):
+        auth_db.audit("demo_denied", ip=request.remote)
+        raise web.HTTPForbidden(text="Wrong access code")
+
+    sid = _issue_session(request, auth_db, DEMO_CREDENTIAL_ID, event="demo_login")
+    resp = web.json_response({"ok": True, "mode": "demo-code"})
+    _set_session_cookie(resp, sid, secure=_secure_cookies(request))
+    LOG.info("LAN demo session issued to %s", request.remote)
+    return resp
+
+
+async def handle_skip(request: web.Request) -> web.Response:
+    """Mint a local session without a passkey (rehearsal escape hatch)."""
+    auth_db = _get_auth_db(request)
+    _rate_guard(request, auth_db)
+
+    sid = _issue_session(request, auth_db, SKIP_CREDENTIAL_ID, event="skip_login")
+    resp = web.json_response({"ok": True, "mode": "skip"})
+    _set_session_cookie(resp, sid, secure=_secure_cookies(request))
+    LOG.info("skip session issued to %s", request.remote)
+    return resp
+
+
 # ── Auth status ───────────────────────────────────────────────────────────── #
 
 async def handle_auth_status(request: web.Request) -> web.Response:
@@ -479,6 +572,7 @@ async def handle_auth_status(request: web.Request) -> web.Response:
     return web.json_response({
         "has_owner": has_owner,
         "authenticated": authenticated,
+        "show_register": not has_owner,
     })
 
 
@@ -498,4 +592,6 @@ def add_auth_routes(app: web.Application) -> None:
         web.get("/auth/credentials", handle_list_credentials),
         web.delete("/auth/credentials/{id}", handle_revoke_credential),
         web.get("/auth/status", handle_auth_status),
+        web.post("/auth/demo", handle_demo),
+        web.post("/auth/skip", handle_skip),
     ])

@@ -128,6 +128,29 @@ async def handle_debug(request: web.Request) -> web.Response:
     return csp.apply(resp, policy)
 
 
+async def handle_alerts_page(request: web.Request) -> web.Response:
+    """Phone-friendly standalone alerts page — session-gated."""
+    if not _ws_session(request):
+        raise web.HTTPUnauthorized(text="Valid session required")
+    page = request.app.get("alerts_page")
+    if page is None:
+        raise web.HTTPNotFound(text="alerts.html missing")
+    body, policy = page
+    resp = web.Response(text=body, content_type="text/html", charset="utf-8")
+    resp.headers["Cache-Control"] = "no-store"
+    return csp.apply(resp, policy)
+
+
+async def handle_alerts(request: web.Request) -> web.Response:
+    """Phone-friendly alert feed: all recent alerts, session-gated, cached 2s."""
+    if not _ws_session(request):
+        raise web.HTTPUnauthorized(text="Valid session required")
+    cfg: Config = request.app["cfg"]
+    alerts = await db.read_recent_alerts(cfg.evidence_db)
+    return web.json_response({"alerts": alerts, "count": len(alerts)},
+                             headers={"Cache-Control": "public, max-age=2"})
+
+
 async def handle_healthz(request: web.Request) -> web.Response:
     app = request.app
     cfg: Config = app["cfg"]
@@ -262,6 +285,7 @@ def create_app(cfg: Config | None = None) -> web.Application:
     app["auth_rp_name"] = cfg.rp_name
     app["auth_origins"] = cfg.origins
     app["auth_secure_cookies"] = cfg.tls_enabled
+    app["demo_code"] = cfg.demo_code
     session_mgr = SessionWsManager()
     app["session_mgr"] = session_mgr
 
@@ -279,12 +303,26 @@ def create_app(cfg: Config | None = None) -> web.Application:
     else:
         app["debug_page"] = None
 
+    # phone-friendly alert feed page
+    if cfg.alerts_html.exists():
+        alerts_html = cfg.alerts_html.read_text(encoding="utf-8")
+        app["alerts_page"] = (
+            alerts_html,
+            csp.build_csp_for_html(alerts_html, tls=cfg.tls_enabled,
+                                   rp_id=cfg.rp_id, https_port=cfg.https_port),
+        )
+        LOG.info("alerts.html loaded from %s", cfg.alerts_html)
+    else:
+        app["alerts_page"] = None
+
     LOG.info("dist=%s (exists=%s) version=%s tls=%s",
              cfg.dist_dir, cfg.dist_dir.exists(), cfg.version, cfg.tls_enabled)
 
     app.add_routes([
         web.get("/ws", handle_ws),
         web.get("/healthz", handle_healthz),
+        web.get("/alerts", handle_alerts_page),
+        web.get("/alerts.json", handle_alerts),
         web.get("/debug.html", handle_debug),
         web.get("/favicon.ico", handle_favicon),
         web.get("/assets/{tail:.*}", handle_asset),

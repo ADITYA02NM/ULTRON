@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ULTRON · Alerts</title>
+<style>
+  :root {
+    --bg:#100e0c; --panel:#1a1714; --panel2:#14120f;
+    --border:#2a2420; --border2:#352e28;
+    --text:#ddd4c8; --muted:#9a8e80; --muted2:#6e6050;
+    --accent:#d4763a;
+    --green:#3ac870; --yellow:#d4b030; --red:#d04838; --purple:#a060d0;
+    --green-tint:rgba(58,200,112,.12); --yellow-tint:rgba(212,176,48,.12);
+    --red-tint:rgba(208,72,56,.12); --purple-tint:rgba(160,96,208,.14);
+    --mono:"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    --radius:4px;
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text);
+         font:14px/1.5 var(--mono); -webkit-font-smoothing:antialiased; }
+  .topbar { display:flex; align-items:center; gap:12px; flex-wrap:wrap;
+            padding:14px 16px; border-bottom:1px solid var(--border);
+            position:sticky; top:0; background:var(--bg); z-index:2; }
+  h1 { margin:0; font-size:16px; font-weight:600; letter-spacing:.14em; text-transform:uppercase; }
+  h1 b { color:var(--accent); }
+  h1 span { display:block; font-size:11px; letter-spacing:.08em; color:var(--muted2); text-transform:none; }
+  .chip { margin-left:auto; padding:2px 8px; border:1px solid var(--border2);
+          border-radius:var(--radius); font-size:11px; letter-spacing:.08em; }
+  .chip.live { color:var(--green); border-color:var(--green); }
+  .chip.offline { color:var(--red); border-color:var(--red); }
+  .count { color:var(--muted); font-size:12px; }
+  .auth { display:none; gap:8px; align-items:center; flex-wrap:wrap;
+          padding:12px 16px; border-bottom:1px solid var(--border); background:var(--panel2); }
+  .auth.show { display:flex; }
+  .auth input { flex:1 1 140px; min-width:0; padding:8px 10px; background:var(--panel);
+                border:1px solid var(--border2); border-radius:var(--radius);
+                color:var(--text); font:inherit; letter-spacing:.12em; }
+  .auth button { padding:8px 14px; border:1px solid var(--accent); background:transparent;
+                 color:var(--accent); border-radius:var(--radius); font:inherit; cursor:pointer; }
+  .auth button:disabled { opacity:.5; cursor:default; }
+  .auth .hint { flex-basis:100%; color:var(--muted2); font-size:11.5px; line-height:1.5; }
+  .wrap { max-width:760px; margin:0 auto; padding:16px; }
+  .stats { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-bottom:16px; }
+  .stat { padding:10px; border:1px solid var(--border); border-radius:var(--radius); background:var(--panel2); }
+  .stat b { display:block; font-size:20px; }
+  .stat span { font-size:10.5px; letter-spacing:.08em; color:var(--muted2); text-transform:uppercase; }
+  .stat.open b { color:var(--yellow); }
+  .stat.red b { color:var(--red); }
+  .stat.purple b { color:var(--purple); }
+  .alert { position:relative; margin:0 0 10px; padding:12px 12px 10px 16px;
+           border:1px solid var(--border); border-radius:var(--radius);
+           background:var(--panel); overflow:hidden; }
+  .alert .bar { position:absolute; left:0; top:0; bottom:0; width:4px; background:var(--muted2); }
+  .alert.sev-info .bar { background:var(--muted); }
+  .alert.sev-yellow .bar { background:var(--yellow); }
+  .alert.sev-red .bar { background:var(--red); }
+  .alert.sev-purple .bar { background:var(--purple); }
+  .alert.sev-yellow { background:var(--yellow-tint); }
+  .alert.sev-red { background:var(--red-tint); }
+  .alert.sev-purple { background:var(--purple-tint); }
+  .alert .head { display:flex; gap:8px; align-items:baseline; flex-wrap:wrap; }
+  .alert .ttl { font-weight:600; }
+  .alert .src { color:var(--muted2); font-size:11.5px; }
+  .alert .sev { margin-left:auto; font-size:10.5px; letter-spacing:.1em;
+                text-transform:uppercase; color:var(--muted); }
+  .alert .body { margin-top:4px; color:var(--muted); font-size:12.5px; }
+  .alert .meta { margin-top:6px; color:var(--muted2); font-size:11px; }
+  .alert.acked { opacity:.55; }
+  .alert.acked .ttl { text-decoration:line-through; }
+  .empty-state { padding:32px 0; text-align:center; color:var(--muted2); }
+  footer { padding:20px 16px 40px; color:var(--muted2); font-size:11px; text-align:center; }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <h1>ULT<b>RON</b><span>Alerts · phone</span></h1>
+  <span class="chip offline" id="conn">OFFLINE</span>
+  <span class="count"><span id="count">0</span> alerts</span>
+</header>
+
+<div id="auth-box" class="auth">
+  <input id="code" type="password" placeholder="LAN access code" autocomplete="off" aria-label="LAN access code">
+  <button id="unlock" type="button">Unlock</button>
+  <span class="hint">Sign in once with the access code shown on laptop 1.
+    The dashboard sign-in uses a passkey; a second laptop or this phone uses the code.</span>
+</div>
+
+<div class="wrap">
+  <div class="stats">
+    <div class="stat open"><b id="s-open">0</b><span>Open</span></div>
+    <div class="stat"><b id="s-acked">0</b><span>Acknowledged</span></div>
+    <div class="stat red"><b id="s-red">0</b><span>Red</span></div>
+    <div class="stat purple"><b id="s-purple">0</b><span>Purple</span></div>
+  </div>
+  <div id="alerts"><div class="empty-state">Loading alerts…</div></div>
+</div>
+
+<footer>ULTRON · Phase 1 (notify-only) · zero cloud</footer>
+
+<script>
+(function () {
+  var conn = document.getElementById("conn");
+  var count = document.getElementById("count");
+  var box = document.getElementById("auth-box");
+  var codeEl = document.getElementById("code");
+  var unlock = document.getElementById("unlock");
+  var list = document.getElementById("alerts");
+  var sOpen = document.getElementById("s-open");
+  var sAcked = document.getElementById("s-acked");
+  var sRed = document.getElementById("s-red");
+  var sPurple = document.getElementById("s-purple");
+
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+
+  function when(ts) {
+    var d = new Date((Number(ts) || 0) * 1000);
+    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  }
+
+  function render(alerts) {
+    count.textContent = String(alerts.length);
+    var open = 0, acked = 0, red = 0, purple = 0;
+    for (var i = 0; i < alerts.length; i++) {
+      var a = alerts[i];
+      if (a.ack) { acked++; } else { open++; }
+      if (a.sev === "red") { red++; }
+      if (a.sev === "purple") { purple++; }
+    }
+    sOpen.textContent = String(open);
+    sAcked.textContent = String(acked);
+    sRed.textContent = String(red);
+    sPurple.textContent = String(purple);
+
+    if (!alerts.length) {
+      list.innerHTML = '<div class="empty-state">No alerts yet.</div>';
+      return;
+    }
+    var out = "";
+    for (var j = 0; j < alerts.length; j++) {
+      var al = alerts[j];
+      var sev = ["info", "yellow", "red", "purple"].indexOf(al.sev) >= 0 ? al.sev : "info";
+      out += '<article class="alert sev-' + sev + (al.ack ? " acked" : "") + '">' +
+        '<span class="bar"></span>' +
+        '<div class="head"><span class="ttl">' + esc(al.title) + '</span>' +
+        '<span class="src">' + esc(al.src) + '</span>' +
+        '<span class="sev">' + esc(sev) + "</span></div>" +
+        (al.body ? '<div class="body">' + esc(al.body) + "</div>" : "") +
+        '<div class="meta">' + when(al.ts) + (al.ack ? " · acknowledged" : "") + "</div>" +
+        "</article>";
+    }
+    list.innerHTML = out;
+  }
+
+  function tick() {
+    fetch("/alerts.json", { cache: "no-store" }).then(function (r) {
+      if (r.status === 401) {
+        box.classList.add("show");
+        conn.textContent = "SIGN IN";
+        conn.className = "chip offline";
+        return null;
+      }
+      return r.json();
+    }).then(function (data) {
+      if (!data) { return; }
+      box.classList.remove("show");
+      conn.textContent = "LIVE";
+      conn.className = "chip live";
+      render(data.alerts || []);
+    }).catch(function () {
+      conn.textContent = "OFFLINE";
+      conn.className = "chip offline";
+    });
+  }
+
+  unlock.addEventListener("click", function () {
+    var value = (codeEl.value || "").trim();
+    if (!value) { return; }
+    unlock.disabled = true;
+    fetch("/auth/demo", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code: value })
+    }).then(function (r) {
+      unlock.disabled = false;
+      if (!r.ok) {
+        conn.textContent = "WRONG CODE";
+        conn.className = "chip offline";
+        return;
+      }
+      codeEl.value = "";
+      box.classList.remove("show");
+      tick();
+    }).catch(function () { unlock.disabled = false; });
+  });
+
+  codeEl.addEventListener("keydown", function (e) {
+    if (e.key === "Enter") { unlock.click(); }
+  });
+
+  tick();
+  setInterval(tick, 2000);
+})();
+</script>
+</body>
+</html>

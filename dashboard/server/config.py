@@ -6,9 +6,12 @@ dev-safe defaults so the same tree runs on a laptop and on the Pi4.
 
 from __future__ import annotations
 
+import logging
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
+
+LOG = logging.getLogger("ultron.config")
 
 VERSION = "0.5.0-phase1"
 
@@ -51,6 +54,7 @@ class Config:
     evidence_db: Path = Path(os.environ.get("ULTRON_EVIDENCE_DB", "/mnt/pendrive/ultron/ultron.db"))
     dist_dir: Path = field(default_factory=_default_dist)
     debug_html: Path = field(default_factory=_default_debug_html)
+    alerts_html: Path = field(default_factory=lambda: _DASHBOARD_DIR / "alerts.html")
 
     # /debug.html gating: enabled globally, or only from the mgmt subnet with basic auth.
     debug_enabled: bool = _b("ULTRON_DEBUG", False)
@@ -80,6 +84,12 @@ class Config:
     ])
     session_ttl: int = int(os.environ.get("ULTRON_SESSION_TTL", "3600"))
 
+    # LAN demo rig (optional). ULTRON_ALLOW_LAN=1 permits non-localhost http://
+    # origins so a phone / second laptop on the same network can reach the
+    # dashboard. ULTRON_DEMO_CODE enables the printed access-code sign-in.
+    allow_lan: bool = _b("ULTRON_ALLOW_LAN", False)
+    demo_code: str = os.environ.get("ULTRON_DEMO_CODE", "")
+
     version: str = VERSION
 
     @property
@@ -104,10 +114,17 @@ def _validate(cfg: "Config") -> None:
         parsed = _url.urlparse(origin)
         if parsed.scheme == "http" and parsed.hostname not in (
             "localhost", "127.0.0.1", "::1",
-        ):
+        ) and not cfg.allow_lan:
             raise ConfigError(
-                f"ULTRON_ORIGINS contains non-localhost http:// origin: {origin}"
+                f"ULTRON_ORIGINS contains non-localhost http:// origin: {origin} "
+                "(set ULTRON_ALLOW_LAN=1 for the LAN demo rig)"
             )
+
+    if cfg.allow_lan and not cfg.demo_code:
+        LOG.warning(
+            "ULTRON_ALLOW_LAN=1 without ULTRON_DEMO_CODE — LAN browsers can "
+            "watch but cannot sign in (passkeys are pinned to rp_id)"
+        )
 
     if cfg.debug_enabled:
         if cfg.rp_id not in ("localhost", "127.0.0.1", "::1"):
