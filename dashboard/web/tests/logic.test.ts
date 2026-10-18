@@ -194,3 +194,80 @@ describe("filterHistory", () => {
     expect(out.map(([, v]) => v).sort()).toEqual([1, 3]);
   });
 });
+
+describe("stored view preferences", () => {
+  const bag = new Map<string, string>();
+  const fake: Storage = {
+    get length() {
+      return bag.size;
+    },
+    clear: () => bag.clear(),
+    getItem: (k: string) => (bag.has(k) ? (bag.get(k) as string) : null),
+    key: (n: number) => {
+      const ks = Array.from(bag.keys());
+      return n >= 0 && n < ks.length ? ks[n] : null;
+    },
+    removeItem: (k: string) => {
+      bag.delete(k);
+    },
+    setItem: (k: string, v: string) => {
+      bag.set(k, v);
+    },
+  };
+  const install = (s: Storage | null) => {
+    if (s) (globalThis as { localStorage?: Storage }).localStorage = s;
+    else delete (globalThis as { localStorage?: Storage }).localStorage;
+  };
+
+  it("persists a change and restores it into a store built later", () => {
+    bag.clear();
+    install(fake);
+    try {
+      const a = new Store();
+      expect(a.getState().historyRange).toBe("24h");
+      a.setHistoryRange("1h");
+      a.setEventFilter("alerts");
+      a.setShowDevices(true);
+      const b = new Store();
+      expect(b.getState().historyRange).toBe("1h");
+      expect(b.getState().eventFilter).toBe("alerts");
+      expect(b.getState().showDevices).toBe(true);
+    } finally {
+      install(null);
+    }
+  });
+
+  it("rejects a stored value of the wrong shape instead of trusting it", () => {
+    bag.clear();
+    bag.set("ultron.prefs", JSON.stringify({ historyRange: "9h", showDevices: "yes" }));
+    install(fake);
+    try {
+      const s = new Store();
+      expect(s.getState().historyRange).toBe("24h");
+      expect(s.getState().showDevices).toBe(false);
+    } finally {
+      install(null);
+    }
+  });
+
+  it("survives unparseable storage rather than throwing", () => {
+    bag.clear();
+    bag.set("ultron.prefs", "{not json");
+    install(fake);
+    try {
+      expect(new Store().getState().historyRange).toBe("24h");
+    } finally {
+      install(null);
+    }
+  });
+
+  it("falls back to defaults when there is no storage at all", () => {
+    install(null);
+    const s = new Store();
+    expect(s.getState().historyRange).toBe("24h");
+    expect(s.getState().eventFilter).toBe("all");
+    expect(s.getState().showDevices).toBe(false);
+    expect(s.getState().selectedDevice).toBeNull();
+    expect(s.getState().focusNode).toBeNull();
+  });
+});

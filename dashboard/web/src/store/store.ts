@@ -2,6 +2,7 @@ import { useCallback, useRef, useSyncExternalStore } from "react";
 import type { AlertD, Band, EventD, Envelope, LanD } from "../contracts/ws";
 import { isWorse } from "../lib/bands";
 import { ClockSync, LatencyWindow } from "../lib/latency";
+import { readPrefs, writePrefs } from "../lib/prefs";
 
 export type Conn = "live" | "stale" | "offline";
 
@@ -87,7 +88,18 @@ const MAX_EVENTS = 500;
 const MAX_DEVICES = 500;
 const MAX_CMD_HISTORY = 100;
 
+/**
+ * The starting state. The operator's view preferences are the one part of it
+ * that outlives a reload, and each stored value is only honoured when it is
+ * still the shape we wrote — a payload from an older build is ignored, not
+ * trusted, so a stale key can never put the store into an impossible state.
+ */
 function initial(): State {
+  const p = readPrefs();
+  const range =
+    p.historyRange === "1h" || p.historyRange === "6h" || p.historyRange === "24h"
+      ? p.historyRange
+      : "24h";
   return {
     authPhase: "checking", authHasOwner: false,
     conn: "offline", degraded: false, score: 0, scoreTs: 0, band: "GREEN", bandBump: 0,
@@ -95,8 +107,13 @@ function initial(): State {
     nodes: {}, layers: { idsCount: 0, idsLast: 0, lanToday: 0, wifiRogue: false, wifiLast: 0, tripLast: 0, tripSeq: 0 },
     pipeline: { detect: 0, govern: 0, alert: 0 },
     latencyLast: 0, latencyP95: 0, clockReady: false, clockUncertaintyMs: Infinity, lastToast: null,
-    events: [], devices: {}, commandHistory: [], muteUntil: 0, focusNode: null, eventFilter: "all", showDevices: false,
-    simRunning: false, selectedDevice: null, historyRange: "24h",
+    events: [], devices: {}, commandHistory: [], muteUntil: 0,
+    focusNode: typeof p.focusNode === "string" ? p.focusNode : null,
+    eventFilter: typeof p.eventFilter === "string" ? p.eventFilter : "all",
+    showDevices: p.showDevices === true,
+    simRunning: false,
+    selectedDevice: typeof p.selectedDevice === "string" ? p.selectedDevice : null,
+    historyRange: range,
   };
 }
 
@@ -170,11 +187,13 @@ export class Store {
 
   setFocusNode(node: string | null): void {
     this.state = { ...this.state, focusNode: node };
+    writePrefs({ focusNode: node });
     this.emit();
   }
 
   setEventFilter(filter: string): void {
     this.state = { ...this.state, eventFilter: filter };
+    writePrefs({ eventFilter: filter });
     this.emit();
   }
 
@@ -186,6 +205,7 @@ export class Store {
   setShowDevices(v: boolean): void {
     if (this.state.showDevices === v) return;
     this.state = { ...this.state, showDevices: v };
+    writePrefs({ showDevices: v });
     this.emit();
   }
 
@@ -198,12 +218,14 @@ export class Store {
   setSelectedDevice(mac: string | null): void {
     if (this.state.selectedDevice === mac) return;
     this.state = { ...this.state, selectedDevice: mac };
+    writePrefs({ selectedDevice: mac });
     this.emit();
   }
 
   setHistoryRange(r: "1h" | "6h" | "24h"): void {
     if (this.state.historyRange === r) return;
     this.state = { ...this.state, historyRange: r };
+    writePrefs({ historyRange: r });
     this.emit();
   }
 
