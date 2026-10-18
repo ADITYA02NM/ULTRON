@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useStore, store } from "../store/store";
+import { BootMark } from "./BootMark";
 import { HardwareTwin } from "./HardwareTwin";
 import {
   checkAuth, setupBegin, setupComplete,
@@ -11,6 +12,11 @@ const TRUST = ["Zero cloud", "Owner-only passkey", "~$290 · ~38 W", "Event → 
 
 // Remembers "this browser skipped sign-in", so it does not ask again.
 const SKIP_KEY = "ultron_skip_auth";
+
+// How long the startup mark stays on screen before the session check takes over.
+// A local check answers in a few milliseconds, which would flash it for a single
+// frame; set to 0 to remove the hold entirely.
+const BOOT_HOLD = 900;
 
 /** Every successful sign-in path funnels through here: wipe anything left over
  *  from a previous session, then open the dashboard. */
@@ -177,6 +183,7 @@ function LoginScreen() {
 function CheckingScreen() {
   return (
     <AuthLayout>
+      <BootMark />
       <div className="auth-status" role="status">Checking session…</div>
     </AuthLayout>
   );
@@ -189,6 +196,12 @@ export function AuthGate({ children }: { children?: React.ReactNode }) {
   const [pendingToken, setPendingToken] = useState(() =>
     Boolean(new URLSearchParams(location.search).get("t"))
   );
+  const [booted, setBooted] = useState(false);
+
+  useEffect(() => {
+    const t = window.setTimeout(() => setBooted(true), BOOT_HOLD);
+    return () => window.clearTimeout(t);
+  }, []);
 
   useEffect(() => {
     const trySkip = async (): Promise<boolean> => {
@@ -222,7 +235,7 @@ export function AuthGate({ children }: { children?: React.ReactNode }) {
     setPendingToken(false);
   };
 
-  if (phase === "checking") return <CheckingScreen />;
+  if (!booted || phase === "checking") return <CheckingScreen />;
   if (pendingToken) return <SetupScreen onDone={finishSetup} />;
   if (phase === "setup") return <SetupScreen />;
   if (phase === "login") return <LoginScreen />;

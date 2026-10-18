@@ -139,6 +139,10 @@
   --dur-sweep: 400ms;
   --dur-flash: 800ms;
   --dur-pulse: 1.5s;
+  /* startup mark: slow enough to read as ambient, not as a spinner */
+  --dur-boot: 2.4s;
+  --dur-boot-wave: 2.6s;
+  --dur-boot-spin: 18s;
   --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
 }
 

@@ -744,3 +744,36 @@ kbd {
 }
 
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+
+/* ---- startup mark (AuthGate checking screen) ---- */
+.boot-mark { display: block; margin: 0 auto var(--space-4); overflow: visible; }
+.boot-mark .bm-ring, .boot-mark .bm-wave,
+.boot-mark .bm-edge, .boot-mark .bm-spoke { fill: none; stroke-width: 1; }
+.boot-mark .bm-ring, .boot-mark .bm-edge { stroke: var(--border-2); }
+.boot-mark .bm-spoke { stroke: var(--accent-line); stroke-dasharray: 2 6; }
+.boot-mark .bm-wave { stroke: var(--accent); }
+.boot-mark .bm-node { fill: var(--muted-2); stroke: var(--border-2); stroke-width: 1; }
+.boot-mark .bm-core { fill: var(--accent); }
+
+/* The circle is offset from the SVG origin, so scale/rotate about its own box
+   rather than about (0,0) — which would swing the mark off screen. */
+.boot-mark .bm-spin, .boot-mark .bm-wave, .boot-mark .bm-core {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.boot-mark .bm-spin { animation: bm-spin var(--dur-boot-spin) linear infinite; }
+.boot-mark .bm-wave { animation: bm-wave var(--dur-boot-wave) ease-out infinite; }
+/* Stagger derived from the period, so timing has one source of truth. */
+.boot-mark .bm-wave-late { animation-delay: calc(var(--dur-boot-wave) / 2); }
+.boot-mark .bm-node { animation: bm-blink var(--dur-boot) ease-in-out infinite; }
+.boot-mark .bm-node-late { animation-delay: calc(var(--dur-boot) / 3); }
+.boot-mark .bm-node-later { animation-delay: calc(var(--dur-boot) * 2 / 3); }
+.boot-mark .bm-core { animation: bm-pulse var(--dur-boot) ease-in-out infinite; }
+
+@keyframes bm-spin { to { transform: rotate(360deg); } }
+@keyframes bm-wave {
+  from { transform: scale(.15); opacity: .5; }
+  to { transform: scale(1); opacity: 0; }
+}
+@keyframes bm-blink { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
+@keyframes bm-pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.25); } }
