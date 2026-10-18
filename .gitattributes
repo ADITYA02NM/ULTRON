@@ -1,0 +1,24 @@
+# Normalise line endings; keep the repository LF-only so the shell scripts and
+# systemd units behave identically on macOS, Linux and the Raspberry Pis.
+* text=auto eol=lf
+
+*.sh                text eol=lf
+*.service           text eol=lf
+*.conf              text eol=lf
+*.py                text eol=lf
+*.ts                text eol=lf
+*.tsx               text eol=lf
+*.cpp               text eol=lf
+*.h                 text eol=lf
+*.ini               text eol=lf
+*.md                text eol=lf
+
+*.png               binary
+*.jpg               binary
+*.pdf               binary
+*.webp              binary
+*.ico               binary
+
+# Collapse generated build output in diffs and language stats.
+dashboard/web/dist/**   linguist-generated=true -diff
+package-lock.json       linguist-generated=true

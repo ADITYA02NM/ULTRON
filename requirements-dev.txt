@@ -1,0 +1,16 @@
+# Development and test dependencies.
+#
+# Pinned deliberately: the runtime requirements float within the ranges their
+# maintainers bless, but the test toolchain does not. An unpinned pytest on a
+# fresh CI runner is how a green pipeline turns red without a code change.
+-r dashboard/server/requirements.txt
+
+# Test runner for the dashboard suite. pytest-asyncio's asyncio_mode setting
+# (see dashboard/pytest.ini) is not stable across its major versions.
+pytest==8.3.3
+pytest-asyncio==0.24.0
+
+# Node services and dev tooling talk MQTT directly; the Pi3a tripwire reader
+# reads the ESP32 over UART.
+paho-mqtt==2.1.0
+pyserial==3.5
