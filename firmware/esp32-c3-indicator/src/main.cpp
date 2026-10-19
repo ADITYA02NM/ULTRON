@@ -88,9 +88,9 @@ bool node_up[4] = {false, false, false, false};
 const char *const SHORT_NODES[4] = {"P4", "3A", "3B", "C3"};
 
 // A scroll bucket for screen_sig, so the panel repaints whenever the trace has
-// moved. Larger than any band's cycle, which over-repaints and never
+// moved. At least as wide as the slowest beat, which over-repaints and never
 // under-repaints -- the safe direction.
-constexpr int TRACE_PERIOD = 56;
+constexpr int TRACE_PERIOD = 128;
 
 // The four bands plus an explicit unknown. Keep the unknown: a silent fallback
 // to green is the single most dangerous thing this board could do.
@@ -115,16 +115,63 @@ constexpr size_t MAX_FRAME = 256;
 // One line at text size 1 is 6 px per glyph across 128 px.
 constexpr size_t MSG_COLS = OLED_W / 6;
 
-// How many beats the trace draws in one cycle. The shape IS the band, so there is
-// no word to read: a flat line is green, one beat is a yellow finding, two is
-// red, and purple draws red's pattern twice because it is red with more of it.
-int beats_for(Band b) {
+// Pixels per beat. That is the whole band reading: a slow heartbeat, then a faster
+// one, then a faster one still, in a 1 : 2 : 4 ratio -- so purple is red's
+// heartbeat at double the rate, which is what a purple alert is, a red one that
+// got worse.
+int trace_pitch(Band b) {
   switch (b) {
-    case Band::Yellow: return 1;
-    case Band::Red:    return 2;
-    case Band::Purple: return 4;
+    case Band::Yellow: return 128;
+    case Band::Red:    return 64;
+    case Band::Purple: return 32;
     default:           return 0;   // green, and anything unrecognised
   }
+}
+
+// One PQRST complex, as a fraction of a beat and a deflection in pixels.
+//
+// Drawing the complex is the whole difference between a heartbeat and a row of
+// bars: a small P bump, a sharp QRS spike with a dip either side of it, and a
+// broader T wave. The positions are fractions rather than pixels so this one table
+// serves every rate, and the amplitudes are small integers because the panel only
+// has nineteen rows to work in.
+struct EcgKnot {
+  float t;
+  int8_t amp;
+};
+
+const EcgKnot ECG_SHAPE[] = {
+    {0.00f,   0},   // flat until the P wave
+    {0.08f,   0},
+    {0.13f,   3},   // P
+    {0.18f,   0},
+    {0.22f,  -2},   // Q
+    {0.25f,  13},   // R
+    {0.28f,  -4},   // S
+    {0.32f,   0},
+    {0.40f,   0},   // the ST segment, flat
+    {0.47f,   5},   // T
+    {0.56f,   0},
+    {1.00f,   0},   // flat until the next beat
+};
+constexpr size_t ECG_KNOTS = sizeof(ECG_SHAPE) / sizeof(ECG_SHAPE[0]);
+
+// The deflection of the trace at phase `p` inside a beat `pitch` pixels wide.
+// Straight lines between the knots are enough: at this size the panel cannot draw
+// a curve anyway, and the sharp corners are what a real trace looks like.
+int ecg_deflection(int p, int pitch) {
+  const float t = static_cast<float>(p) / static_cast<float>(pitch);
+
+  for (size_t i = 1; i < ECG_KNOTS; i++) {
+    if (t <= ECG_SHAPE[i].t) {
+      const float span = ECG_SHAPE[i].t - ECG_SHAPE[i - 1].t;
+      const float u = span > 0.0f ? (t - ECG_SHAPE[i - 1].t) / span : 0.0f;
+      const float v = static_cast<float>(ECG_SHAPE[i - 1].amp) * (1.0f - u) +
+                      static_cast<float>(ECG_SHAPE[i].amp) * u;
+      return static_cast<int>(v < 0.0f ? v - 0.5f : v + 0.5f);
+    }
+  }
+  return 0;
 }
 
 // Exact band rails in 0xRRGGBB, the same values the reference firmware uses.
@@ -628,45 +675,33 @@ const char *status_word(LedMode m) {
 // the reading survives a photograph and a colour-blind operator equally well --
 // and the pixel is carrying the same band in colour at the same moment.
 void draw_trace(int16_t y0, int16_t h) {
-  const int16_t base = y0 + h - 1;
+  // The baseline sits five pixels off the bottom, which leaves the S wave
+  // somewhere to dip and still fits the R spike under the top of the band.
+  const int16_t base = y0 + h - 5;
 
-  // The baseline is always drawn, so a flat band and a beating one share a
-  // reference and the eye reads the difference rather than the position.
   oled.drawFastHLine(0, base, OLED_W, SSD1306_WHITE);
 
-  const int beats = beats_for(g.band);
-  if (beats == 0) return;   // green: flat, and that is the whole signal
+  const int pitch = trace_pitch(g.band);
+  if (pitch == 0) return;   // green: flat, and that is the whole signal
 
-  // A beat is the same shape in every band: a crisp tick standing on the baseline.
-  // What changes is the rate. Yellow is one beat with a long flat run after it, red
-  // is two, and purple is red's shape again at double the rate -- which is what a
-  // purple alert is, a red one that got worse.
-  //
-  // The tick is deliberately narrow. Widening it does not make a fatter spike, it
-  // makes a broken one: the column-connect below only bridges neighbouring columns,
-  // so a triangle more than a couple of columns wide splits into two separate
-  // strokes with a hole between them.
-  const int pitch = beats == 1 ? 42 : (beats == 2 ? 21 : 14);
-  const int period = pitch * beats;
-  constexpr int spike = 3;
-  constexpr int half = spike / 2;
-  const int peak = h - 4;
+  // The strip sweeps right to left. A beat at this speed takes a few seconds to
+  // cross, which is roughly the pace of the monitor it is imitating.
+  const int scroll = static_cast<int>((millis() / 60) % pitch);
 
-  // The cycle slides left as time passes, scrolling the trace like a monitor.
-  const int scroll = static_cast<int>((millis() / 60) % period);
+  // Start from the column just off the left edge, or the first column draws a line
+  // all the way back to the baseline and leaves a spike on the border.
+  int prev = ecg_deflection((scroll + pitch - 1) % pitch, pitch);
 
-  // Connect each column to the one before it, or a steep spike reads as a dotted
-  // line rather than as a trace.
-  int prev = 0;
+  // Connect each column to the one before it. Without that a steep QRS reads as a
+  // dotted line rather than as a trace.
   for (int x = 0; x < OLED_W; x++) {
-    // Where this column sits inside one beat: `pitch` px, with the spike at the
-    // front of it.
-    const int p = (x + scroll) % pitch;
-    const int up = p < spike ? peak * (p < half ? p : spike - 1 - p) / half : 0;
-    const int lo = up < prev ? up : prev;
-    const int hi = up < prev ? prev : up;
-    for (int yy = lo; yy <= hi; yy++) oled.drawPixel(x, base - yy, SSD1306_WHITE);
-    prev = up;
+    const int defl = ecg_deflection((x + scroll) % pitch, pitch);
+    const int from = base - prev;
+    const int to = base - defl;
+    const int lo = from < to ? from : to;
+    const int hi = from < to ? to : from;
+    for (int y = lo; y <= hi; y++) oled.drawPixel(x, y, SSD1306_WHITE);
+    prev = defl;
   }
 }
 

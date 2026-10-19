@@ -91,22 +91,28 @@ cannot hold `esp32`.
 
 ## The trace
 
-The band is drawn, not spelled out. A trace scrolls across the bottom of the
-panel the way it would on a monitor, and **the shape is the reading**:
+The band is drawn, not spelled out. A trace scrolls right to left across the
+bottom of the panel the way it would on a monitor, and each beat is a real
+**PQRST complex** rather than a tick: a small P bump, a sharp QRS spike with a dip
+either side of it, and a broader T wave. The complex stands on a baseline five
+pixels off the bottom of the band, which leaves the S wave somewhere to dip and
+still fits the R spike under the top.
+
+**What you read is the rate**, because the complex is identical in every band:
 
 | Band | Trace |
 |------|-------|
-| `GREEN` | flat |
-| `YELLOW` | one beat — one tick per 42 px |
-| `RED` | two beats — one tick per 21 px |
-| `PURPLE` | four beats — one tick per 14 px, red's pattern at double the rate, because a purple alert is a red one that got worse |
+| `GREEN` | flat — the baseline and nothing else |
+| `YELLOW` | one complex per screen — one beat per 128 px |
+| `RED` | two complexes per screen — one beat per 64 px |
+| `PURPLE` | four complexes per screen — one beat per 32 px, red's heartbeat at double the rate, because a purple alert is a red one that got worse |
 
-A beat is the same tick in every band, so what you read is the **rate**, not the
-shape: sparse is yellow, tighter is red, tightest is purple. The tick is
-deliberately narrow — widening it does not make a fatter spike, it makes a broken
-one, because the column-to-column join that keeps a steep edge connected only
-bridges neighbouring columns, so a wide triangle splits into two separate strokes
-with a hole between them.
+The complex is a table of knots in `main.cpp` (`ECG_SHAPE`), written as fractions
+of a beat rather than pixels so one table serves every rate, with
+`ecg_deflection()` interpolating straight lines between them. Fractions, and small
+amplitudes, because the band is only nineteen rows tall and at this size the
+display cannot draw a curve anyway — the sharp corners are what a real trace looks
+like.
 
 Nothing is written down, so the reading survives a photograph and a colour-blind
 operator equally well — and the pixel is carrying the same band in colour at the
