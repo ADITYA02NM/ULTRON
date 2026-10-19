@@ -404,23 +404,23 @@ void led_loop() {
 
 float clampf(float v, float lo, float hi) { return v < lo ? lo : (v > hi ? hi : v); }
 
-// One eye, taken from the reference firmware: a ring, a pupil that can look
-// sideways, and lids that can close. open_amt 0 = shut, 1 = wide.
-void draw_eye(int cx, int cy, int r, float open_amt, float look_x) {
+// One eye: an opaque disc, and lids that can close over it. open_amt 0 = shut,
+// 1 = wide. Solid rather than a ring with a pupil inside it, because a ring
+// reads as a hole in the face and these are lenses -- and because two solid
+// discs growing and shrinking in opposite directions carry a head turn much
+// further than two outlines ever do.
+void draw_eye(int cx, int cy, int r, float open_amt) {
   if (open_amt <= 0.03f) {
     oled.drawLine(cx - r, cy, cx + r, cy, SSD1306_WHITE);
     return;
   }
-  oled.drawCircle(cx, cy, r, SSD1306_WHITE);
-  const int pr = r / 3;
-  const int px = cx + static_cast<int>(look_x * (r - pr - 3));
-  oled.fillCircle(px, cy, pr, SSD1306_WHITE);
+  oled.fillCircle(cx, cy, r, SSD1306_WHITE);
   if (open_amt < 0.97f) {
+    // The lids come down over the disc and black it out above and below the
+    // opening, which on a filled eye leaves a lens rather than a slit.
     const int half = static_cast<int>(r * open_amt);
     oled.fillRect(cx - r - 2, cy - r - 2, 2 * r + 4, r - half + 2, SSD1306_BLACK);
     oled.fillRect(cx - r - 2, cy + half, 2 * r + 4, r - half + 2, SSD1306_BLACK);
-    oled.drawLine(cx - r, cy - half, cx + r, cy - half, SSD1306_WHITE);
-    oled.drawLine(cx - r, cy + half, cx + r, cy + half, SSD1306_WHITE);
   }
 }
 
@@ -442,8 +442,8 @@ void draw_eyes(float turn, float open_amt) {
   const int rB = R + static_cast<int>(turn * 4.5f);
   // The whole pair also leans a few pixels into the turn.
   const int shift = static_cast<int>(turn * 3.0f);
-  draw_eye(cxA + shift, cy, rA, open_amt, 0.0f);
-  draw_eye(cxB + shift, cy, rB, open_amt, 0.0f);
+  draw_eye(cxA + shift, cy, rA, open_amt);
+  draw_eye(cxB + shift, cy, rB, open_amt);
 }
 
 // An eye that reads as happy rather than shut: the same arc the lid draws, but
@@ -474,18 +474,22 @@ void draw_smile(int cx, int cy, int half, int depth) {
 // board that is awake but has never heard from anything is distinguishable at a
 // glance from a dead one.
 void boot_animation() {
-  constexpr uint32_t T_OPEN = 800;     // the lids come up
-  constexpr uint32_t T_LOOK_L = 900;   // he turns to the left of the screen
-  constexpr uint32_t T_LOOK_R = 1000;  // ...and sweeps across to the right
-  constexpr uint32_t T_LOOK_C = 450;   // ...and back to the front
+  constexpr uint32_t T_OPEN = 700;     // the lids come up
+  constexpr uint32_t T_LOOK_L = 850;   // he turns to the left of the screen
+  constexpr uint32_t T_LOOK_R = 950;   // ...and sweeps across to the right
+  constexpr uint32_t T_LOOK_C = 400;   // ...and back to the front
+  constexpr uint32_t T_BLINK = 180;    // one quick blink
   constexpr uint32_t T_SMILE = 2200;   // the grin, then the readout
-  constexpr uint32_t T_TOTAL = T_OPEN + T_LOOK_L + T_LOOK_R + T_LOOK_C + T_SMILE;
+  constexpr uint32_t T_TOTAL =
+      T_OPEN + T_LOOK_L + T_LOOK_R + T_LOOK_C + T_BLINK + T_SMILE;
   constexpr int cy = 30, R = 15, cxA = 40, cxB = 88;
   const uint32_t t0 = millis();
   Serial.println("[boot] eyes");
 
   while (millis() - t0 < T_TOTAL) {
     const uint32_t e = millis() - t0;
+    const uint32_t look_end = T_OPEN + T_LOOK_L + T_LOOK_R + T_LOOK_C;
+    const uint32_t blink_end = look_end + T_BLINK;
 
     oled.clearDisplay();
     oled.setTextColor(SSD1306_WHITE);
@@ -508,16 +512,24 @@ void boot_animation() {
       // of the three movements.
       const float p = static_cast<float>(e - T_OPEN - T_LOOK_L) / T_LOOK_R;
       draw_eyes(-1.0f + 2.0f * smoothstep01(p), 1.0f);
-    } else if (e < T_OPEN + T_LOOK_L + T_LOOK_R + T_LOOK_C) {
+    } else if (e < look_end) {
       // Back to the front, looking at whoever is watching.
       const float p = static_cast<float>(e - T_OPEN - T_LOOK_L - T_LOOK_R) / T_LOOK_C;
       draw_eyes(1.0f - smoothstep01(p), 1.0f);
+    } else if (e < blink_end) {
+      // One quick blink: shut and open again inside 180 ms. It is the cheapest
+      // thing that makes two discs look alive rather than drawn.
+      const float p = static_cast<float>(e - look_end) / T_BLINK;
+      draw_eyes(0.0f, fabsf(cosf(p * PI)));
     } else {
-      // The grin. Just over two seconds: long enough to register, short enough
-      // not to hold up a demo.
-      draw_happy_eye(cxA, cy, R);
-      draw_happy_eye(cxB, cy, R);
-      draw_smile(OLED_W / 2, 46, 26, 8);
+      // The grin, and a slow bob so the face is never quite a photograph. Just
+      // over two seconds: long enough to register, short enough not to hold up
+      // a demo.
+      const int bob = static_cast<int>(
+          sinf(static_cast<float>(millis() % 1400) / 1400.0f * 2.0f * PI) * 1.5f);
+      draw_happy_eye(cxA, cy + bob, R);
+      draw_happy_eye(cxB, cy + bob, R);
+      draw_smile(OLED_W / 2, 46 + bob, 26, 8);
     }
 
     oled.display();

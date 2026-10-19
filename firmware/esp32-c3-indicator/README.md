@@ -50,26 +50,29 @@ colour; it now renders as the no-link colour instead.
 
 ## Boot
 
-Power-up runs one character beat before the readout appears, the same four moves
+Power-up runs one character beat before the readout appears, the same six moves
 every time:
 
 | Beat | What happens |
 |------|--------------|
-| 800 ms | the lids come up |
-| 900 ms | he turns to his left |
-| 1000 ms | ...and sweeps slowly across to the right |
-| 450 ms | ...and back to the front |
-| 2200 ms | the grin, and then the readout takes over |
+| 700 ms | the lids come up |
+| 850 ms | he turns to his left |
+| 950 ms | ...and sweeps slowly across to the right |
+| 400 ms | ...and back to the front |
+| 180 ms | one quick blink |
+| 2200 ms | the grin, and a slow bob, and then the readout takes over |
 
 Nothing slides. Wall-E's eyes are fixed lenses on a head that pivots, so the turn
 is drawn as perspective instead: the eye on the side he turns towards swings
 round to face you and **grows**, while the far eye foreshortens and **shrinks**.
-Two circles changing size in opposite directions read as a head turning without a
-single pupil ever leaving the centre of its eye.
+Two opaque discs changing size in opposite directions read as a head turning — a
+ring outline reads as a hole in the face and carries none of it.
 
-The pixel pulses blue throughout, so a board that is awake but has never heard
-from anything looks different at a glance from a dead one. The log says
-`[boot] eyes` when it starts and `[boot] wall-e` when it hands over.
+The eyes are **solid, not rings with a pupil inside**, and the blink and the slow
+bob are what stop the face reading as a drawing. The pixel pulses blue
+throughout, so a board that is awake but has never heard from anything looks
+different at a glance from a dead one. The log says `[boot] eyes` when it starts
+and `[boot] wall-e` when it hands over.
 
 ## What the panel shows
 
