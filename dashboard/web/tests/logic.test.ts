@@ -7,6 +7,7 @@ import {
   eventsNear, filterHistory, fracAt, pickAt, tipY, toleranceSec,
 } from "../src/components/History";
 import type { Envelope } from "../src/contracts/ws";
+import { clearPrefs, readPrefs } from "../src/lib/prefs";
 
 const env = (t: string, d: unknown, ts = Date.now() / 1000): Envelope =>
   ({ t, ts, d } as unknown as Envelope);
@@ -271,6 +272,29 @@ describe("stored view preferences", () => {
     expect(s.getState().showDevices).toBe(false);
     expect(s.getState().selectedDevice).toBeNull();
     expect(s.getState().focusNode).toBeNull();
+  });
+
+  it("clearPrefs forgets what was stored, so the next store starts on defaults", () => {
+    bag.clear(); install(fake);
+    try {
+      const a = new Store();
+      a.setHistoryRange("1h");
+      a.setShowDevices(true);
+      expect(readPrefs().historyRange).toBe("1h");
+
+      clearPrefs();
+
+      expect(readPrefs()).toEqual({});
+      const b = new Store();
+      expect(b.getState().historyRange).toBe("24h");
+      expect(b.getState().showDevices).toBe(false);
+    } finally { install(null); }
+  });
+
+  it("clearPrefs is a no-op without storage rather than a throw", () => {
+    install(null);
+    expect(() => clearPrefs()).not.toThrow();
+    expect(readPrefs()).toEqual({});
   });
 });
 

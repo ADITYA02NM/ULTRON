@@ -109,6 +109,17 @@ header {
 .sim-btn:hover { border-color: var(--accent); }
 .sim-btn.running { color: var(--bg); background: var(--red); border-color: var(--red); }
 
+/* console reset — same footprint as the session chip, because it is the same
+   kind of rare action. It discards state, so it stays muted until hovered
+   rather than competing with the drill button for attention. */
+.reset-chip {
+  font-size: var(--fs-base); padding: var(--space-1) var(--space-2); cursor: pointer;
+  color: var(--muted); background: none;
+  border: 1px solid var(--border-2); border-radius: var(--radius);
+  transition: color var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+.reset-chip:hover { color: var(--text); border-color: var(--red); }
+
 /* header escalation sweep */
 .sweep::after {
   content: ""; position: absolute; inset: 0; pointer-events: none;

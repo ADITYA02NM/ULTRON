@@ -1,6 +1,7 @@
 import { rc } from "../dev/rc";
 import { memo, useEffect, useRef, useState } from "react";
-import { useStore } from "../store/store";
+import { store, useStore } from "../store/store";
+import { clearPrefs } from "../lib/prefs";
 import { utcClock } from "../lib/format";
 import { logout } from "../lib/auth";
 import { transport } from "../transport/transport";
@@ -70,6 +71,24 @@ function HeaderImpl() {
         }}
       >
         {simRunning ? "■ STOP" : "▶ SIMULATE"}
+      </button>
+      <button
+        className="reset-chip"
+        title="Reset the console — stop any drill and forget every event, alert, device and view preference"
+        onClick={() => {
+          // Stop the drill first. reset() clears simRunning locally, but the
+          // server carries on pushing sim frames, so the flag would flip back
+          // to running within a second and the reset would look like a no-op.
+          simulation.stop();
+          transport.sendSim("stop");
+          // clearPrefs before reset: reset() rebuilds state from initial(),
+          // which reads the stored preferences back off disk, so clearing
+          // afterwards would leave them applied until the next reload.
+          clearPrefs();
+          store.reset();
+        }}
+      >
+        ⟲ RESET
       </button>
       <button className="session-chip" title="Sign out" onClick={() => { transport.stop(); simulation.stop(); logout(); }}>SIGN OUT</button>
     </header>

@@ -51,3 +51,21 @@ export function writePrefs(patch: Prefs): void {
     /* best effort: a preference that cannot be stored is not an error */
   }
 }
+
+/**
+ * Forget the stored view preferences, so the next store built starts on the
+ * defaults rather than on whatever the previous operator was looking at.
+ *
+ * Only the reset button calls this, and it calls it *before* store.reset():
+ * reset() rebuilds its state from initial(), which reads these back, so
+ * clearing afterwards would leave them applied until the next reload.
+ */
+export function clearPrefs(): void {
+  const s = storage();
+  if (!s) return;
+  try {
+    s.removeItem(KEY);
+  } catch {
+    /* best effort, same as writePrefs */
+  }
+}
