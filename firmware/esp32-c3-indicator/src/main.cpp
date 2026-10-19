@@ -424,6 +424,28 @@ void draw_eye(int cx, int cy, int r, float open_amt, float look_x) {
   }
 }
 
+// Smooth in and out, so a head turn eases instead of starting and stopping like
+// a machine.
+float smoothstep01(float p) { return p * p * (3.0f - 2.0f * p); }
+
+// A pair of eyes that can turn, `turn` running -1 (looking to the left of the
+// screen) through 0 (facing straight out) to +1.
+//
+// The turn is sold by perspective, not by sliding the pupils: the eye on the
+// side he turns towards swings round to face the viewer and grows, while the far
+// eye foreshortens and shrinks. Two circles changing size in opposite directions
+// read as a head turning -- which is what Wall-E does, because his eyes are fixed
+// lenses on a head that pivots rather than balls that roll in a socket.
+void draw_eyes(float turn, float open_amt) {
+  constexpr int cy = 30, R = 15, cxA = 40, cxB = 88;
+  const int rA = R - static_cast<int>(turn * 4.5f);
+  const int rB = R + static_cast<int>(turn * 4.5f);
+  // The whole pair also leans a few pixels into the turn.
+  const int shift = static_cast<int>(turn * 3.0f);
+  draw_eye(cxA + shift, cy, rA, open_amt, 0.0f);
+  draw_eye(cxB + shift, cy, rB, open_amt, 0.0f);
+}
+
 // An eye that reads as happy rather than shut: the same arc the lid draws, but
 // curving upward, so the opening is above it and it reads as ^ rather than as a
 // closed eye.
@@ -446,13 +468,18 @@ void draw_smile(int cx, int cy, int half, int depth) {
   }
 }
 
-// Boot, in three beats: the eyes open, the eyes close, and then the character
-// smiles for three seconds before the readout takes over. The pixel pulses blue
-// underneath the whole time, so a board that is awake but has never heard from
-// anything is distinguishable at a glance from a dead one.
+// Boot, in Wall-E's beats: the eyes open, they turn to look one way, then sweep
+// slowly across to the other, then come back to the front and he grins, before
+// the readout takes over. The pixel pulses blue underneath the whole time, so a
+// board that is awake but has never heard from anything is distinguishable at a
+// glance from a dead one.
 void boot_animation() {
-  constexpr uint32_t T_OPEN = 900, T_CLOSE = 700, T_SMILE = 3000;
-  constexpr uint32_t T_TOTAL = T_OPEN + T_CLOSE + T_SMILE;
+  constexpr uint32_t T_OPEN = 800;     // the lids come up
+  constexpr uint32_t T_LOOK_L = 900;   // he turns to the left of the screen
+  constexpr uint32_t T_LOOK_R = 1000;  // ...and sweeps across to the right
+  constexpr uint32_t T_LOOK_C = 450;   // ...and back to the front
+  constexpr uint32_t T_SMILE = 2200;   // the grin, then the readout
+  constexpr uint32_t T_TOTAL = T_OPEN + T_LOOK_L + T_LOOK_R + T_LOOK_C + T_SMILE;
   constexpr int cy = 30, R = 15, cxA = 40, cxB = 88;
   const uint32_t t0 = millis();
   Serial.println("[boot] eyes");
@@ -469,17 +496,25 @@ void boot_animation() {
     if (e < T_OPEN) {
       // Lids lifting. Squared, so it snaps open rather than crawling.
       const float p = static_cast<float>(e) / T_OPEN;
-      draw_eye(cxA, cy, R, p * p, 0.0f);
-      draw_eye(cxB, cy, R, p * p, 0.0f);
-    } else if (e < T_OPEN + T_CLOSE) {
-      // And coming back down again.
-      const float p = static_cast<float>(e - T_OPEN) / T_CLOSE;
-      const float open_amt = 1.0f - p * p;
-      draw_eye(cxA, cy, R, open_amt, 0.0f);
-      draw_eye(cxB, cy, R, open_amt, 0.0f);
+      draw_eyes(0.0f, p * p);
+    } else if (e < T_OPEN + T_LOOK_L) {
+      // He looks to his left. Nothing slides: the turn is read off the two eyes
+      // changing size in opposite directions -- see draw_eyes.
+      const float p = static_cast<float>(e - T_OPEN) / T_LOOK_L;
+      draw_eyes(-smoothstep01(p), 1.0f);
+    } else if (e < T_OPEN + T_LOOK_L + T_LOOK_R) {
+      // The slow sweep across to the other side. This is the beat that reads as
+      // "he is taking the room in" rather than as a twitch, so it is the longest
+      // of the three movements.
+      const float p = static_cast<float>(e - T_OPEN - T_LOOK_L) / T_LOOK_R;
+      draw_eyes(-1.0f + 2.0f * smoothstep01(p), 1.0f);
+    } else if (e < T_OPEN + T_LOOK_L + T_LOOK_R + T_LOOK_C) {
+      // Back to the front, looking at whoever is watching.
+      const float p = static_cast<float>(e - T_OPEN - T_LOOK_L - T_LOOK_R) / T_LOOK_C;
+      draw_eyes(1.0f - smoothstep01(p), 1.0f);
     } else {
-      // Three seconds is long enough to register and short enough not to hold
-      // up a demo.
+      // The grin. Just over two seconds: long enough to register, short enough
+      // not to hold up a demo.
       draw_happy_eye(cxA, cy, R);
       draw_happy_eye(cxB, cy, R);
       draw_smile(OLED_W / 2, 46, 26, 8);
@@ -489,7 +524,7 @@ void boot_animation() {
     led_loop();
     delay(15);
   }
-  Serial.println("[boot] smile");
+  Serial.println("[boot] wall-e");
 }
 
 // A shallow arc opening downward: the sleeping eyelid. The same character as the

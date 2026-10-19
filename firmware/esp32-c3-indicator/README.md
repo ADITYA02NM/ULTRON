@@ -48,6 +48,29 @@ An unidentified band is **never green**. The band arrives from another machine
 over a wire, and a value of `red` or `RED ` used to fall through to the healthy
 colour; it now renders as the no-link colour instead.
 
+## Boot
+
+Power-up runs one character beat before the readout appears, the same four moves
+every time:
+
+| Beat | What happens |
+|------|--------------|
+| 800 ms | the lids come up |
+| 900 ms | he turns to his left |
+| 1000 ms | ...and sweeps slowly across to the right |
+| 450 ms | ...and back to the front |
+| 2200 ms | the grin, and then the readout takes over |
+
+Nothing slides. Wall-E's eyes are fixed lenses on a head that pivots, so the turn
+is drawn as perspective instead: the eye on the side he turns towards swings
+round to face you and **grows**, while the far eye foreshortens and **shrinks**.
+Two circles changing size in opposite directions read as a head turning without a
+single pupil ever leaving the centre of its eye.
+
+The pixel pulses blue throughout, so a board that is awake but has never heard
+from anything looks different at a glance from a dead one. The log says
+`[boot] eyes` when it starts and `[boot] wall-e` when it hands over.
+
 ## What the panel shows
 
 | Region | Content |
