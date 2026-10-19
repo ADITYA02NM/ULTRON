@@ -24,6 +24,7 @@ import os
 import secrets
 import ssl
 import time
+import urllib.parse
 from pathlib import Path
 
 from aiohttp import WSCloseCode, WSMsgType, web
@@ -172,9 +173,33 @@ async def handle_healthz(request: web.Request) -> web.Response:
 # --------------------------------------------------------------------------- #
 # WebSocket
 # --------------------------------------------------------------------------- #
+def _same_origin(request: web.Request, origin: str) -> bool:
+    """True when `origin` addresses this very server.
+
+    The allow-list is built once, at startup, from whatever address the machine
+    had then. A laptop that moves between networks, or a phone that reaches the
+    box by hostname instead of by IP, would otherwise be refused for an origin
+    that never left the room. Comparing the Origin against the request's own Host
+    header answers "did the browser think it was talking to us?" without having
+    to know our own addresses — so whatever address the frontend is loaded from
+    works, which is the point.
+
+    This is still a real check: a cross-site page sends *its* origin in the
+    header, never ours, so it can never satisfy this.
+    """
+    if not origin:
+        return False
+    try:
+        netloc = urllib.parse.urlsplit(origin).netloc
+    except ValueError:
+        return False
+    host = request.headers.get("Host", "")
+    return bool(host) and netloc == host
+
+
 def _validate_ws_origin(request: web.Request, origins: list[str]) -> bool:
     origin = request.headers.get("Origin", "")
-    return origin in origins
+    return origin in origins or _same_origin(request, origin)
 
 
 # State-changing methods a browser can issue cross-site without a preflight.
@@ -198,7 +223,7 @@ def _origin_guard(origins: list[str]):
     async def middleware(request: web.Request, handler):
         if request.method in _UNSAFE_METHODS:
             origin = request.headers.get("Origin", "")
-            if origin and origin not in origins:
+            if origin and origin not in origins and not _same_origin(request, origin):
                 LOG.warning("blocked cross-origin %s %s (origin=%s)",
                             request.method, request.path, origin)
                 raise web.HTTPForbidden(text="Origin not allowed")

@@ -133,7 +133,7 @@ flowchart TB
 | **Pi4 8GB** | **Governance** | .1 | MQTT, risk engine, **premium dashboard**, health, **pendrive evidence**, **AC600 mgmt AP**, SSD offload scripts |
 | **Pi3B+** | **Detection** | .2 | Suricata, new-device watch, **TL-WN722N** passive WiFi, tripwire sense |
 | **Pi3B+** | **Alert** | .3 | Alert manager (SMTP), reports → **Pi4 pendrive vault**, tripwire sense |
-| **ESP32-C3** | Indicator | USB→Pi4 | NeoPixel band + OLED score |
+| **ESP32-C3** | Indicator | USB→Pi4 | NeoPixel band + OLED: fleet, score, status, ECG trace |
 | **ESP32-WROOM** | Tripwire | GPIO | Case open (radio **off**, **no buzzer**) |
 
 **Two networks:**
@@ -192,8 +192,8 @@ Matches [`architecture.md`](architecture.md) §3.6. Full tables there.
 | **Pi4 USB 3.0** | **AC600** | USB3 | hostapd AP `SENTINEL-SECURE` → mgmt `192.168.50.0/24` |
 | **Pi4 USB 3.0** | **pendrive** | USB3 | **Evidence vault** — SQLite WAL + Markdown |
 | **Pi4 USB 2.0** | **ESP32-C3 mini** | USB2 | Serial **115200**, JSON @10Hz + `\n` |
-| ESP32-C3 GPIO | SSD1306 OLED | I2C | Address `0x3C`, ≤4 Hz redraw |
-| ESP32-C3 GPIO | WS2812B DIN | dupont | Optional 8-px strip, common GND |
+| ESP32-C3 GPIO5 / GPIO6 | SSD1306 OLED | I2C | SDA 5, SCL 6, address `0x3C`, 400 kHz, 8 Hz redraw |
+| ESP32-C3 GPIO8 | WS2812B DIN | dupont | Single pixel, common GND |
 | **Pi3a USB** | **TL-WN722N** | USB | Monitor mode — **passive only** |
 | SSD (dock / laptop) | admin OS + offload | USB | Admin key; scripts move files off Pi SD cards |
 | WROOM GPIO16 | Pi3a GPIO | jumper | Case reed, pull-up, LOW = open |
@@ -241,6 +241,41 @@ Matches [`architecture.md`](architecture.md) §3.6. Full tables there.
 **WS envelope:** `{t, ts, d}` with `t ∈ alert|score|band|health|lan|tripwire|history|toast` (+ transport-level `{ctl:"ping"/"pong"}` clock-sync).  
 **Spec + acceptance checklist:** [`dashboard.md`](dashboard.md) (§8 is the demo gate).  
 **Build steps:** [`build.md`](build.md) **Track B**. **Endpoints + data-flow reference:** [`use.md`](use.md).
+
+### The indicator panel (ESP32-C3)
+
+A 0.96" SSD1306 (128×64) on I2C at `0x3C` — SDA 5, SCL 6, clocked at 400 kHz so a
+full frame costs about 20 ms instead of 100 and the trace can animate at 8 Hz. The
+board is driven over USB serial at 115200 baud and renders a whole frame from one
+JSON line, so the cable is the entire transport: no WiFi credentials, no MQTT
+client on the MCU.
+
+| Region | What it shows |
+|--------|---------------|
+| Top | `ULTRON`, with a rule underneath |
+| Left | the fleet as a 2×2 block — `P4` `3A` `3B` `C3` — filled while that node is reporting, outlined when it is not |
+| Right | the risk score, three digits, fixed width so it does not slide between `9` and `100` |
+| Under the score | the status word — `NORMAL` `DETECT` `ALERT` `LOCKDOWN` `OFFLINE` |
+| Bottom, full width | the band as a scrolling **ECG trace** |
+
+**The trace is the band.** Each beat is a real PQRST complex — a small P bump, a
+sharp QRS spike with a dip either side of it, and a broader T wave — and the
+complex is identical in every band. What changes is the **rate**:
+
+| Band | Trace |
+|------|-------|
+| 🟢 GREEN | flat — the baseline and nothing else |
+| 🟡 YELLOW | one complex per screen — one beat per 128 px |
+| 🔴 RED | two complexes per screen — one beat per 64 px |
+| 🟣 PURPLE | four complexes per screen — one beat per 32 px, red's heartbeat at double the rate |
+
+Nothing is spelled out, so the reading survives a photograph and a colour-blind
+operator equally well — and the NeoPixel is carrying the same band in colour at the
+same instant. A flat green line therefore means **nothing is happening**, not that
+the panel is broken: the beats appear when the score crosses 30.
+
+Firmware, pinout and the Wall-E boot animation:
+[`firmware/esp32-c3-indicator/`](firmware/esp32-c3-indicator/).
 
 ---
 
@@ -340,6 +375,29 @@ sudo systemctl enable --now mosquitto
 #    https://ultron.lan  (install CA cert from ca/ca.crt first)
 #    Unlock with passkey (fingerprint / Windows Hello)
 ```
+
+### Laptop demo rig (no Pis)
+
+The whole stack also runs on one machine, with a mock feed standing in for the Pis:
+
+```bash
+./start.sh --prod     # mosquitto + dashboard :8080 + serial bridge
+```
+
+Open **`http://<this machine's IP>:8080`** — from the laptop itself, or from a phone
+on the same network. Nothing needs to know that address in advance: the backend
+binds `0.0.0.0`, the frontend dials `location.host`, and the server accepts any
+request whose `Origin` matches the `Host` it was actually reached on. Move the
+machine to a different network, get a new address, and the same URL keeps working
+with no rebuild and no config change.
+
+The banner printed at start-up shows the current URL and the one-time access code
+for phones.
+
+| Feed | What it does |
+|------|--------------|
+| `mock_feed.py --script demo` | a quiet home under watch; peaks at YELLOW (score 38) |
+| `mock_feed.py --script stress` | a real incident; reaches RED and PURPLE — the one that exercises every band, the NeoPixel and the ECG trace |
 
 ---
 

@@ -266,7 +266,8 @@ void apply_line(const String &raw) {
   static uint32_t last_frame_log = 0;
   if (millis() - last_frame_log >= 1000) {
     last_frame_log = millis();
-    Serial.printf("[frame] score=%d open=%d\n", g.score, g.open);
+    Serial.printf("[frame] score=%d band=%d pitch=%d open=%d\n", g.score,
+                  static_cast<int>(g.band), trace_pitch(g.band), g.open);
   }
 }
 
