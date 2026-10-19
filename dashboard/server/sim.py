@@ -18,6 +18,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
+import signal
 import sys
 from pathlib import Path
 from typing import Any, Awaitable, Callable
@@ -49,6 +51,10 @@ class Drill:
         self._script: str | None = None
         self._cycles: int = 0
         self._watcher: asyncio.Task[None] | None = None
+        # Suspended, not ended. The child is stopped with SIGSTOP so it keeps
+        # its cycle position and its timers: resuming continues the same story
+        # rather than starting a new one.
+        self._paused: bool = False
         self.on_change: OnChange | None = None
 
     # -- state ------------------------------------------------------------- #
@@ -60,6 +66,7 @@ class Drill:
         live = self.running()
         return {
             "running": live,
+            "paused": live and self._paused,
             "script": self._script if live else None,
             "cycles": self._cycles if live else 0,
             "pid": self._proc.pid if live and self._proc is not None else None,
@@ -82,6 +89,10 @@ class Drill:
             raise ValueError(f"unknown script: {script!r}")
         cycles = max(0, min(int(cycles), MAX_CYCLES))
         if self.running():
+            if self._paused:
+                # Pressing the button again on a suspended drill means "carry
+                # on", not "throw this one away and start over".
+                return await self.resume()
             return await self._announce(changed=False)
         if not self.feed.exists():
             raise FileNotFoundError(f"mock feed missing: {self.feed}")
@@ -102,6 +113,53 @@ class Drill:
         LOG.info("drill started script=%s cycles=%s pid=%s", script, cycles, self._proc.pid)
         self._watcher = asyncio.create_task(self._watch(self._proc))
         return await self._announce(changed=True)
+
+    # -- pause ------------------------------------------------------------- #
+
+    def _signal(self, sig: int) -> bool:
+        """Best-effort signal to the child. False if there is nothing to signal."""
+        proc = self._proc
+        if proc is None or proc.returncode is not None:
+            return False
+        try:
+            os.kill(proc.pid, sig)
+        except ProcessLookupError:
+            return False
+        return True
+
+    async def pause(self) -> dict[str, Any]:
+        """Suspend the drill where it stands, keeping its cycle position."""
+        if not self.running() or self._paused:
+            return await self._announce(changed=False)
+        if not self._signal(signal.SIGSTOP):
+            return await self._announce(changed=False)
+        self._paused = True
+        LOG.info("drill paused pid=%s", self._proc.pid if self._proc else "?")
+        return await self._announce(changed=True)
+
+    async def resume(self) -> dict[str, Any]:
+        """Continue a suspended drill from exactly where it stopped."""
+        if not self.running() or not self._paused:
+            return await self._announce(changed=False)
+        if not self._signal(signal.SIGCONT):
+            return await self._announce(changed=False)
+        self._paused = False
+        LOG.info("drill resumed pid=%s", self._proc.pid if self._proc else "?")
+        return await self._announce(changed=True)
+
+    def _unpause_before_kill(self, proc: asyncio.subprocess.Process) -> None:
+        """A stopped process cannot run its SIGTERM handler.
+
+        Without this the grace period always expires and every paused drill is
+        killed the hard way after STOP_GRACE_S.
+        """
+        if not self._paused:
+            return
+        self._paused = False
+        try:
+            os.kill(proc.pid, signal.SIGCONT)
+        except ProcessLookupError:
+            pass
 
     async def _cancel_watcher(self) -> None:
         """Retire the watcher so only one coroutine reports a given ending."""
@@ -126,6 +184,7 @@ class Drill:
         # The watcher is awaiting the same proc.wait(). If it wins the race it
         # announces "stopped" as well, and every operator gets the frame twice.
         await self._cancel_watcher()
+        self._unpause_before_kill(proc)
         proc.terminate()
         try:
             await asyncio.wait_for(proc.wait(), timeout=STOP_GRACE_S)
@@ -138,6 +197,7 @@ class Drill:
             self._proc = None
             self._script = None
             self._cycles = 0
+            self._paused = False
         return await self._announce(changed=True)
 
     async def _watch(self, proc: asyncio.subprocess.Process) -> None:
@@ -148,6 +208,7 @@ class Drill:
         self._proc = None
         self._script = None
         self._cycles = 0
+        self._paused = False
         if proc.returncode == 0:
             LOG.info("drill finished on its own (rc=0)")
             await self._announce(changed=True, finished=True)
@@ -162,6 +223,7 @@ class Drill:
         self._proc = None
         if proc is None or proc.returncode is not None:
             return
+        self._unpause_before_kill(proc)
         proc.terminate()
         try:
             await asyncio.wait_for(proc.wait(), timeout=STOP_GRACE_S)

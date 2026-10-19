@@ -100,6 +100,40 @@ describe("store.applyBatch", () => {
   });
 });
 
+describe("store sim frames", () => {
+  it("keeps paused distinct from running", () => {
+    const s = new Store();
+    s.applyBatch([env("sim", { running: false, paused: false })]);
+    expect(s.getState().simRunning).toBe(false);
+    expect(s.getState().simPaused).toBe(false);
+
+    s.applyBatch([env("sim", { running: true, paused: false })]);
+    expect(s.getState().simRunning).toBe(true);
+    expect(s.getState().simPaused).toBe(false);
+
+    s.applyBatch([env("sim", { running: true, paused: true })]);
+    expect(s.getState().simRunning).toBe(true);
+    expect(s.getState().simPaused).toBe(true);
+  });
+
+  it("cannot be paused once it has ended", () => {
+    // A drill that is not running has nothing to suspend, so a stale paused
+    // flag must not leave the button offering a resume that would do nothing.
+    const s = new Store();
+    s.applyBatch([env("sim", { running: true, paused: true })]);
+    s.applyBatch([env("sim", { running: false, paused: true })]);
+    expect(s.getState().simRunning).toBe(false);
+    expect(s.getState().simPaused).toBe(false);
+  });
+
+  it("ignores a frame that omits the paused flag", () => {
+    const s = new Store();
+    s.applyBatch([env("sim", { running: true, paused: true })]);
+    s.applyBatch([env("sim", { running: true })]);
+    expect(s.getState().simPaused).toBe(false);
+  });
+});
+
 describe("store.reset", () => {
   it("wipes live state but preserves the auth phase", () => {
     const s = new Store();

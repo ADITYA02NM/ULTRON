@@ -44,7 +44,7 @@ export class Transport {
    * its beats go over MQTT like a real sensor's, so the vault, the band and the
    * notifier all see them. Nothing here fabricates events locally.
    */
-  sendSim(action: "start" | "stop" | "status", script = "stress"): void {
+  sendSim(action: "start" | "stop" | "pause" | "resume" | "status", script = "stress"): void {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify({ sim: action, script }));
     }

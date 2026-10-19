@@ -495,6 +495,31 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# 8c. Indicator bridge (cable -> OLED/NeoPixel board)
+# ---------------------------------------------------------------------------
+# The ESP32-C3 indicator reads newline JSON on a USB serial port. On the real
+# rig nodes/pi4/risk_engine.py writes that link; on the demo laptop there is no
+# Pi4 cabled to the panel, so this mirrors the broker onto it instead. USB and
+# not the board's own radio: the demo AP is 5 GHz and the C3 is 2.4 GHz-only, so
+# the radio can never associate.
+#
+# Started here, and not by hand, because a bridge that is not part of the stack
+# is a bridge that is missing exactly when the panel matters -- a restart used to
+# leave the board frozen on its last frame while the dashboard carried on.
+SERIAL_PORT="${ULTRON_SERIAL_PORT:-/dev/ttyUSB0}"
+if [ -e "$SERIAL_PORT" ]; then
+  if [ -r "$SERIAL_PORT" ] && [ -w "$SERIAL_PORT" ]; then
+    # The repo venv has no pyserial; the system python does.
+    start_bg bridge "$REPO" /usr/bin/python3 "$DASH/tools/serial_bridge.py" --port "$SERIAL_PORT"
+    echo "[start] bridge: $SERIAL_PORT -> OLED (score, band, open, msg)"
+  else
+    echo "[start] bridge: $SERIAL_PORT exists but is not read/write — check the dialout/uucp group"
+  fi
+else
+  echo "[start] bridge: no indicator on $SERIAL_PORT (plug the board in, or set ULTRON_SERIAL_PORT)"
+fi
+
+# ---------------------------------------------------------------------------
 # 9. Login / enrolment URL + QR
 # ---------------------------------------------------------------------------
 TOKEN=""

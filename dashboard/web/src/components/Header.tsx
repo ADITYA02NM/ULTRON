@@ -15,6 +15,7 @@ function HeaderImpl() {
   const band = useStore((s) => s.band);
   const bump = useStore((s) => s.bandBump);
   const simRunning = useStore((s) => s.simRunning);
+  const simPaused = useStore((s) => s.simPaused);
   const [clock, setClock] = useState(utcClock());
   const headRef = useRef<HTMLElement>(null);
 
@@ -55,22 +56,31 @@ function HeaderImpl() {
       <div className="clock">{clock} UTC</div>
       <div className="tag">MONITOR</div>
       <button
-        className={"sim-btn" + (simRunning ? " running" : "")}
-        title={simRunning
-          ? "Stop the sensor drill"
-          : "Run the sensor drill — real events, real alerts"}
+        className={"sim-btn" + (simPaused ? " paused" : simRunning ? " running" : "")}
+        title={simPaused
+          ? "Resume the drill from where it stopped"
+          : simRunning
+            ? "Pause the drill — it keeps its place in the cycle"
+            : "Run the sensor drill — real events, real alerts"}
         onClick={() => {
-          if (simRunning) {
-            // Stop both: a drill on the server, and any local sim left over
-            // from the console, so the button and the truth agree again.
-            simulation.stop();
-            transport.sendSim("stop");
+          if (simPaused) {
+            // Resuming is not the same as starting: the server kept the drill
+            // suspended with all its state, so the cycle carries on where it
+            // was rather than replaying the first two minutes.
+            simulation.resume();
+            transport.sendSim("resume");
+          } else if (simRunning) {
+            // Pause, not stop. The local beats are only timers, so they are
+            // cleared and re-scheduled on resume; the server side is a real
+            // process that is suspended with SIGSTOP and resumed with SIGCONT.
+            simulation.pause();
+            transport.sendSim("pause");
           } else {
             transport.sendSim("start", "stress");
           }
         }}
       >
-        {simRunning ? "■ STOP" : "▶ SIMULATE"}
+        {simPaused ? "▶ RESUME" : simRunning ? "❚❚ PAUSE" : "▶ SIMULATE"}
       </button>
       <button
         className="reset-chip"

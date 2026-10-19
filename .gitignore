@@ -57,3 +57,7 @@ auth.db.bak.*
 
 # Secrets (copy from .env.example; never commit)
 .env
+
+# Firmware WiFi/MQTT credentials (copy from secrets.example.h; never commit).
+# config.h itself is tracked and must stay credential-free.
+firmware/**/secrets.h

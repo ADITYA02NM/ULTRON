@@ -35,6 +35,11 @@ export class Simulation {
   private beatTimers: number[] = [];
   private scoreTimer = 0;
   private healthTimer = 0;
+  /** Suspended rather than finished: the beat timers are gone but the cycle
+   *  position is kept, so resuming replays only what is left. */
+  private paused = false;
+  private pausedAt = 0;
+  private cycleStartedAt = 0;
 
   isRunning(): boolean { return this.running; }
 
@@ -203,10 +208,24 @@ export class Simulation {
   }
 
   private scheduleCycle(): void {
+    this.scheduleFrom(0);
+  }
+
+  /** Arm every beat still ahead of `elapsed` ms into the current cycle. */
+  private scheduleFrom(elapsed: number): void {
+    // A cycle that ran out while we were away rolls over rather than leaving
+    // the drill with nothing armed at all.
+    if (elapsed >= CYCLE_MS) {
+      this.cycle += 1;
+      this.alertSeq = 0;
+      elapsed = 0;
+    }
+    this.cycleStartedAt = Date.now() - elapsed;
     for (const b of this.beats()) {
+      if (b.at <= elapsed) continue;
       this.beatTimers.push(window.setTimeout(() => {
-        if (this.running) b.run(this.cycle);
-      }, b.at));
+        if (this.running && !this.paused) b.run(this.cycle);
+      }, b.at - elapsed));
     }
   }
 
@@ -219,7 +238,9 @@ export class Simulation {
     this.score = store.getState().score;
     this.silence = false;
     this.startedAt = Date.now();
+    this.paused = false;
     store.setSimRunning(true);
+    store.setSimPaused(false);
     this.healthPump();
     this.scorePump();
     this.scoreTimer = window.setInterval(this.scorePump, SCORE_TICK_MS);
@@ -227,17 +248,46 @@ export class Simulation {
     this.scheduleCycle();
   }
 
+  pause(): void {
+    if (!this.running || this.paused) return;
+    this.paused = true;
+    this.pausedAt = Date.now();
+    this.clearTimers();
+    store.setSimPaused(true);
+    this.toast("Simulation paused", "info");
+  }
+
+  resume(): void {
+    if (!this.running || !this.paused) return;
+    const away = Date.now() - this.pausedAt;
+    this.paused = false;
+    // The beat timers did not survive the pause, so start the cycle clock back
+    // exactly `away` ms — otherwise a long pause would silently fast-forward
+    // the drill and fire every missed beat at once.
+    const elapsed = Math.max(0, Date.now() - away - this.cycleStartedAt);
+    store.setSimPaused(false);
+    this.healthPump();
+    this.scorePump();
+    this.scoreTimer = window.setInterval(this.scorePump, SCORE_TICK_MS);
+    this.healthTimer = window.setInterval(this.healthPump, HEALTH_TICK_MS);
+    this.scheduleFrom(elapsed);
+    this.toast("Simulation resumed", "info");
+  }
+
   stop(): void {
     if (!this.running) return;
     this.running = false;
     this.clearTimers();
     this.silence = false;
+    this.paused = false;
     store.setSimRunning(false);
+    store.setSimPaused(false);
     this.toast("Simulation stopped", "info");
   }
 
   toggle(): void {
-    if (this.running) this.stop();
+    if (this.paused) this.resume();
+    else if (this.running) this.pause();
     else this.start();
   }
 }

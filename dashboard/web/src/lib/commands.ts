@@ -149,9 +149,12 @@ export function execCommand(raw: string): void {
       if (args === "stop") {
         simulation.stop();
         store.addCommand(entry(trimmed, "Simulation stopped", true));
+      } else if (store.getState().simPaused) {
+        simulation.resume();
+        store.addCommand(entry(trimmed, "Simulation resumed", true));
       } else if (store.getState().simRunning) {
-        simulation.stop();
-        store.addCommand(entry(trimmed, "Simulation stopped", true));
+        simulation.pause();
+        store.addCommand(entry(trimmed, "Simulation paused", true));
       } else {
         simulation.start();
         store.addCommand(entry(trimmed, "Simulation running — client-side demo feed", true));

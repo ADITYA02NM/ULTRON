@@ -309,7 +309,7 @@ async def handle_ws(request: web.Request) -> web.WebSocketResponse:
             # Scenario and cycle count are the only things a client may choose,
             # and both are closed sets checked inside sim.Drill.
             action = ctrl.get("sim")
-            if action in ("start", "stop", "status"):
+            if action in ("start", "stop", "pause", "resume", "status"):
                 drill = request.app.get("drill")
                 if drill is None:
                     await send(envelope("toast", {"msg": "drill unavailable", "sev": "yellow"}))
@@ -322,6 +322,10 @@ async def handle_ws(request: web.Request) -> web.WebSocketResponse:
                             )
                         elif action == "stop":
                             state = await drill.stop()
+                        elif action == "pause":
+                            state = await drill.pause()
+                        elif action == "resume":
+                            state = await drill.resume()
                         else:
                             state = drill.status()
                     except ValueError:

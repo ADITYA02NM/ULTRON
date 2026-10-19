@@ -108,6 +108,7 @@ header {
 }
 .sim-btn:hover { border-color: var(--accent); }
 .sim-btn.running { color: var(--bg); background: var(--red); border-color: var(--red); }
+.sim-btn.paused { color: var(--bg); background: var(--yellow); border-color: var(--yellow); }
 
 /* console reset — same footprint as the session chip, because it is the same
    kind of rare action. It discards state, so it stays muted until hovered

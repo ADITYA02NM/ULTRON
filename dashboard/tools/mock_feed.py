@@ -63,6 +63,11 @@ BANNER = r"""
 # Keep in step with dashboard/web/src/lib/simulation.ts.
 CYCLE_MS = 92000
 HEALTH_TICK_S = 4.0
+# The indicator's firmware declares LINK LOST after 3 s of silence. A feed that
+# publishes only when the score moves leaves the panel blank during a plateau
+# while the console shows a perfectly steady number, so the serial frame gets
+# its own steady beat rather than riding on score changes.
+LINK_TICK_S = 1.0
 NODES = ("pi4", "pi3a", "pi3b", "esp32")
 
 
@@ -122,6 +127,13 @@ class Feed:
         self.client.subscribe("ultron/ack/#", qos=1)
         self.client.loop_start()
         self._n = 0
+        # The tail the panel shows: the most recent alert title, cleared by an
+        # acknowledgement. Kept here because the serial frame is the only place
+        # the indicator can learn it.
+        self.last_msg = ""
+        # Last score seen, so an acknowledgement can repaint the panel without
+        # the cycle having to hand the value over.
+        self.last_score = 0
 
     def pub(self, topic: str, payload: dict | str | int, retain: bool = False) -> None:
         data = payload if isinstance(payload, str) else json.dumps(payload)
@@ -137,8 +149,36 @@ class Feed:
 
     def risk(self, score: int) -> None:
         score = max(0, min(100, score))
+        band = band_for(score)
         self.pub("ultron/risk/score", {"v": score}, retain=True)
-        self.pub("ultron/risk/band", {"b": band_for(score)}, retain=True)
+        self.pub("ultron/risk/band", {"b": band}, retain=True)
+        self.frame(score, band)
+
+    def open_alerts(self) -> int:
+        return sum(1 for a in self.alerts.values() if not a.get("ack"))
+
+    def frame(self, score: int, band: str | None = None) -> None:
+        """The whole panel, on the topic the indicator documents.
+
+        nodes/pi4/risk_engine.py writes exactly this object down the serial link
+        on the real rig, and publishes only score and band to MQTT. A board fed
+        from the broker therefore had no way to learn the alert count or the
+        message, so the shelf and the console disagreed about the same moment.
+        Retained, so a board -- or a bridge -- that arrives late still paints the
+        current state instead of waiting for the next change.
+        """
+        score = max(0, min(100, score))
+        self.last_score = score
+        self.pub(
+            "ultron/risk/frame",
+            {
+                "score": score,
+                "band": band or band_for(score),
+                "open": self.open_alerts(),
+                "msg": self.last_msg[:60],
+            },
+            retain=True,
+        )
 
     def lan(self, dev: dict) -> None:
         """Announce (or refresh) one endpoint on the monitored LAN."""
@@ -156,6 +196,7 @@ class Feed:
         payload = {"id": aid, "sev": sev, "title": title, "src": src,
                    "body": body, "ts": int(time.time()), "ack": False}
         self.alerts[aid] = payload
+        self.last_msg = title
         self.pub(f"ultron/alert/{aid}", payload)
 
     def _on_ack(self, client, userdata, msg) -> None:  # noqa: ANN001 - paho callback
@@ -170,6 +211,9 @@ class Feed:
         stamped = dict(payload, ack=True, ack_ts=int(time.time()))
         self.alerts[aid] = stamped
         self.pub(f"ultron/alert/{aid}", stamped)
+        # The open count just dropped. Repaint now rather than on the next score
+        # change, so the panel does not sit on an alert the console has cleared.
+        self.frame(self.last_score)
 
     def stop(self) -> None:
         self.client.loop_stop()
@@ -193,6 +237,7 @@ class Cycle:
         self.target = 8
         self.t = 0.0
         self.tick = 0.0
+        self.link_tick = 0.0
 
     def _pump(self, seconds: float) -> None:
         deadline = time.monotonic() + seconds
@@ -211,6 +256,12 @@ class Cycle:
             if self.tick >= HEALTH_TICK_S:
                 self.tick = 0.0
                 self.feed.health()
+            # The panel's own beat. Independent of whether the score moved, so
+            # a plateau reads as a steady number rather than as a dead link.
+            self.link_tick += slept
+            if self.link_tick >= LINK_TICK_S:
+                self.link_tick = 0.0
+                self.feed.frame(self.score)
 
     def at(self, ms: int, fn) -> None:  # noqa: ANN001 - small local callback
         """Run `fn` when the cycle clock reaches `ms` milliseconds."""

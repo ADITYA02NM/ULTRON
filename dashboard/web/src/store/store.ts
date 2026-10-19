@@ -79,6 +79,8 @@ export interface State {
   eventFilter: string;
   showDevices: boolean;
   simRunning: boolean;
+  /** Suspended, not ended: the drill keeps its cycle position. */
+  simPaused: boolean;
   selectedDevice: string | null;
   historyRange: "1h" | "6h" | "24h";
 }
@@ -112,6 +114,7 @@ function initial(): State {
     eventFilter: typeof p.eventFilter === "string" ? p.eventFilter : "all",
     showDevices: p.showDevices === true,
     simRunning: false,
+    simPaused: false,
     selectedDevice: typeof p.selectedDevice === "string" ? p.selectedDevice : null,
     historyRange: range,
   };
@@ -215,6 +218,12 @@ export class Store {
     this.emit();
   }
 
+  setSimPaused(v: boolean): void {
+    if (this.state.simPaused === v) return;
+    this.state = { ...this.state, simPaused: v };
+    this.emit();
+  }
+
   setSelectedDevice(mac: string | null): void {
     if (this.state.selectedDevice === mac) return;
     this.state = { ...this.state, selectedDevice: mac };
@@ -288,6 +297,9 @@ export class Store {
           // Drill state belongs to the server, so every operator's button agrees
           // and a reload shows a drill that is genuinely still running.
           s.simRunning = Boolean((env.d as { running?: boolean }).running);
+          // A paused drill has no beats, so the button has to say so — the
+          // only other honest reading of a silent drill is "it finished".
+          s.simPaused = s.simRunning && Boolean((env.d as { paused?: boolean }).paused);
           break;
         }
         case "history": {

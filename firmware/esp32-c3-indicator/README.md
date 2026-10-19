@@ -1,19 +1,26 @@
 # ESP32-C3 — indicator
 
-Renders the risk score on an SSD1306 OLED and tint an optional WS2812B strip.
-Connected to Pi4 over USB 2.0 at 115200, reading newline-delimited JSON.
+Renders the risk score on an SSD1306 OLED and shows the band on **one onboard
+NeoPixel**. No strip, no second display: four things on the glass and one colour
+on the LED, so it can be read from across a room.
+
+Connected to Pi4 over USB 2.0 at 115200, reading newline-delimited JSON. It also
+speaks MQTT when WiFi credentials are present — see [Transport](#transport).
 
 ## Pins
 
 | Pin | Destination | Protocol |
 |-----|-------------|----------|
-| USB | Pi4 USB **2.0** | 115200, newline JSON, ~10 Hz — also the board's power |
-| GPIO8 | SSD1306 SDA | I2C |
-| GPIO9 | SSD1306 SCL | I2C, address `0x3C` |
+| USB | Pi4 USB **2.0** | 115200, newline JSON — also the board's power |
+| GPIO5 | SSD1306 **SDA** | I2C |
+| GPIO6 | SSD1306 **SCL** | I2C, address `0x3C` |
 | **3V3** | SSD1306 VCC | power — **3.3 V, not 5 V** (see Wiring) |
-| GPIO10 | WS2812B DIN | single-wire NRZ (optional) |
-| **5V** | WS2812B VCC | power (optional strip) |
-| GND | OLED + strip | common ground |
+| GPIO8 | NeoPixel DIN | single-wire NRZ, `LED_COUNT = 1` (the onboard pixel) |
+| **5V** | NeoPixel VCC | power — 5 V, which is what it is specified for |
+| GND | OLED + LED | common ground |
+
+`GPIO8` carries the pixel, so the I2C pair is fixed to **5/6**. There is no
+alternate pair to probe.
 
 ## Input contract
 
@@ -29,31 +36,63 @@ Connected to Pi4 over USB 2.0 at 115200, reading newline-delimited JSON.
 | `msg` | string | optional one-line tail |
 
 Malformed lines and overlong frames are **dropped, not guessed at** — the last
-good reading stands.
+good reading stands. `score`, `band` and `open` are parsed and validated on the
+way in; the panel face below is deliberately only four elements, so `open` and
+`msg` currently reach the board but are not drawn. They are logged:
 
-## Why it shows LINK LOST
+```
+[frame] score=31 open=13
+```
 
-If the serial link goes quiet for 3 s the panel stops showing the score and says
-`LINK LOST`. Freezing on the last number would mean the shelf keeps displaying
-a stale **GREEN** while nothing is watching the house. An honest blank beats a
-confident lie.
-
-The strip follows the same rule, off the same check: with the link down it
-breathes amber rather than holding the last band colour. A green strip sitting
-above a panel that says `LINK LOST` is the one combination this board must never
-show, so both outputs read the same `link_lost()`.
+An unidentified band is **never green**. The band arrives from another machine
+over a wire, and a value of `red` or `RED ` used to fall through to the healthy
+colour; it now renders as the no-link colour instead.
 
 ## What the panel shows
 
 | Region | Content |
 |--------|---------|
-| top | risk score, large |
-| middle | band as an **inverted word banner** — `GREEN` `YELLOW` `RED` `PURPLE` |
-| lower | `msg`, cut to one line with a trailing `~` when it does not fit |
-| bottom right | `N OPEN`, shown only when something is unacknowledged |
+| top | heading `ULTRON`, with a hairline under it |
+| **left corner** | the fleet: four boxes, `pi4` `pi3a` `pi3b` `esp32` — filled when that node is reporting, outlined when it is not |
+| **right** | the risk score, three digits, fixed width so it does not slide between `9` and `100` |
+| bottom right | the band as an **inverted word** — `GREEN` `YELLOW` `RED` `PURPLE` |
 
-Colour alone carries no information to a colour-blind operator and none at all
-in a photograph of the shelf, which is why the band is a word as well as a tint.
+The four fleet boxes are fed by `ultron/health/<node>` and follow the same
+highlight the dashboard uses, so the shelf and the console agree box for box.
+
+Colour alone carries no information to a colour-blind operator and none at all in
+a photograph of the shelf, which is why the band is a word as well as a tint.
+
+## Why it goes to sleep
+
+If the link goes quiet for **3 s** the panel stops showing the score and draws a
+**sleeping face** — eyes shut, `Z`s drifting off, and the caption
+`asleep - no signal` (or `waiting for data` before the first frame ever arrives).
+
+The LED follows the same rule, off the same `link_lost()` check: with no link it
+blinks the no-link colour rather than holding the last band colour. A green pixel
+sitting above a panel that has gone to sleep is the one combination this board
+must never show, so both outputs read the same predicate.
+
+Freezing on the last number would mean the shelf keeps displaying a stale
+**GREEN** while nothing is watching the house. An honest sleep beats a confident
+lie.
+
+## What the LED means
+
+Five colours, **full rail or off** — there is no dimming and no brightness ramp,
+so `LED_BRIGHT` does not wash the hue out. Motion is the only signal:
+
+| Band / state | Colour | Motion |
+|--------------|--------|--------|
+| `GREEN` | `0x00ff00` | **steady** — on continuously |
+| `YELLOW` | `0xffcc00` | 2 Hz hard blink |
+| `RED` | `0xff0000` | 4 Hz hard blink |
+| `PURPLE` | `0xb000ff` | 1 Hz slow blink |
+| no link, or unknown band | `0x0040ff` | 0.5 Hz slow blink |
+
+Each colour is a pure rail, so green reads green and red reads red — no teal
+shift from mixing channels down toward grey.
 
 ## Wiring: what goes on 5 V and what does not
 
@@ -64,31 +103,51 @@ in a photograph of the shelf, which is why the band is a word as well as a tint.
   ESP32-C3's pins are 3.3 V parts. That is out of spec and is a real way to lose
   a GPIO. The module's own regulator runs happily from 3.3 V, so 5 V buys
   nothing here.
-- **WS2812B strip — 5 V**, which is what it is specified for. Its data line is
-  still driven at 3.3 V logic, the usual marginal case that works in practice at
-  these lengths, and `LED_BRIGHT = 40` keeps the current draw small.
-- **An unidentified band renders `----` in grey, never green.** The band arrives
-  from another machine over a wire; a value of `red` or `RED ` used to fall
-  through to the healthy colour.
+- **NeoPixel — 5 V**, which is what it is specified for. Its data line is driven
+  at 3.3 V logic, the usual marginal case that works in practice for a single
+  onboard pixel.
 
-## Why no radio
+## Transport
 
-There is no WiFi and there is deliberately no `WiFi.begin()` to add one. The
-link to Pi4 is the USB cable — one-directional, with nothing to say back. A
-wireless indicator is a second way to be lied to, and adding a radio would put a
-remote path to a display whose whole job is to be trusted.
+Two transports, one contract:
+
+- **USB — always.** The board reads newline JSON on its serial port and nothing
+  is needed to enable it.
+- **MQTT — when `include/secrets.h` exists.** Drop the file in and the board also
+  joins WiFi, subscribes to the topic set below, and takes its frames from there.
+  Without the file the firmware still builds; the WiFi code is compiled out.
+
+`include/secrets.h` is gitignored because it holds the WiFi passphrase. Copy
+`include/secrets.example.h` to `include/secrets.h` and fill it in.
+
+| Topic | Payload |
+|-------|---------|
+| `ultron/risk/frame` | the whole frame above |
+| `ultron/risk/score` | `{"v": 38}` |
+| `ultron/risk/band` | `{"b": "YELLOW"}` |
+| `ultron/health/#` | `{"node": "pi4", "up": 5390, "services": ["ok"]}` — `up > 0` means reporting |
+
+On the demo rig the local access point is **5 GHz** and the ESP32-C3 is
+**2.4 GHz-only**, so the board cannot associate with it at all. USB is the
+transport that actually works there, and it is why the board is cabled rather
+than on the radio.
 
 ## Why no scoring on-board
 
 Two independent scorers eventually disagree, and then the operator has to decide
 which display to believe. Pi4 is the single source of truth; this board only
-renders.
+renders. Nothing on this board reads a sensor, weighs anything, or decides a
+band — which is also why a dropped frame is a reason to go to sleep and never a
+reason to guess.
 
 ## Build
 
 ```bash
 cd firmware/esp32-c3-indicator
-pio run
-pio run --target upload
-pio device monitor
+pio run                                              # compile
+pio run --target upload --upload-port /dev/ttyUSB0   # flash
+pio device monitor                                   # watch the boot log
 ```
+
+Only one process may hold the serial port. If the upload cannot open it, check
+with `lsof /dev/ttyUSB0` — a running serial bridge will be holding it.
