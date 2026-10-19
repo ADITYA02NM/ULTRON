@@ -205,16 +205,25 @@ DEMO_CODE_FILE="$REPO/.demo-code"
 DEMO_CODE="${ULTRON_DEMO_CODE:-}"
 if [ -z "$DEMO_CODE" ] && [ -f "$DEMO_CODE_FILE" ]; then
   DEMO_CODE="$(cat "$DEMO_CODE_FILE" 2>/dev/null || true)"
+  # A code on disk that is not the grouped 16-byte form is the legacy 4-byte
+  # one — thin for something the docs describe as a shared secret, even behind
+  # the 5-per-5-minutes limiter. Drop it so it gets regenerated below rather
+  # than keep a weak secret just because the file already exists. An explicit
+  # ULTRON_DEMO_CODE is an operator override and is left alone.
+  if [ "${#DEMO_CODE}" -ne 33 ] || [ "${DEMO_CODE:16:1}" != "-" ]; then
+    DEMO_CODE=""
+  fi
 fi
 if [ -z "$DEMO_CODE" ]; then
   # 128 bits, grouped so it stays readable when copied off the banner by hand.
-  # The original 4-byte code carried only 32 bits — thin for something the docs
-  # describe as a shared secret, even behind the 5-per-5-minutes limiter.
   _code_hex="$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n' | tr 'a-f' 'A-F')"
   DEMO_CODE="${_code_hex:0:16}-${_code_hex:16:16}"
   printf '%s' "$DEMO_CODE" > "$DEMO_CODE_FILE"
-  chmod 600 "$DEMO_CODE_FILE" 2>/dev/null || true
 fi
+# Unconditional, and outside the generate branch: the read path used to leave
+# the file at whatever mode it already had, so a world-readable access code
+# survived every restart. This is a sign-in secret, so it is owner-only.
+chmod 600 "$DEMO_CODE_FILE" 2>/dev/null || true
 
 # Pick this machine's real LAN address. A container/VM bridge (docker0, br-*,
 # veth*, virbr*, vmnet*, tailscale0 …) is routable from this host but invisible
