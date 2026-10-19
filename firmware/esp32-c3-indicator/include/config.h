@@ -38,7 +38,7 @@ constexpr uint32_t LINK_TIMEOUT_MS = 3000;  // silence => show LINK LOST
 
 // Drawing is deliberately capped: an OLED redrawn at serial rate smears, and
 // the documented limit is <=4 Hz.
-constexpr uint32_t REDRAW_MS = 250;
+constexpr uint32_t REDRAW_MS = 125;
 
 // ── Optional wireless link ───────────────────────────────────────────────────
 // The board is still a USB-serial display first: the cable is never disabled.

@@ -22,8 +22,8 @@
 // cable.
 //
 // The panel mirrors the fleet, not just the score: `ultron/health/<node>` is a
-// retained heartbeat, so the four boxes along the bottom are filled only while
-// that node is actually reporting. A box is a fact, not decoration.
+// retained heartbeat, so a fleet square is filled only while that node is
+// actually reporting. A square is a fact, not decoration.
 //
 // The pixel carries colour AND motion, taken from the reference firmware
 // (../voidmain/firmware/esp32-risk-mini):
@@ -82,6 +82,15 @@ LedMode led_mode = LedMode::Offline;
 const char *const NODES[4] = {"pi4", "pi3a", "pi3b", "esp32"};
 bool node_up[4] = {false, false, false, false};
 
+// Two-character labels for the fleet squares. A square small enough to leave the
+// trace its room cannot hold "esp32", so the names are abbreviated, in the same
+// order as NODES: pi4, pi3a, pi3b, and the C3 board.
+const char *const SHORT_NODES[4] = {"P4", "3A", "3B", "C3"};
+
+// Width in pixels of one full cycle of the heartbeat pattern. Shared with
+// screen_sig, so a flat band does not repaint the panel and a beating one does.
+constexpr int TRACE_PERIOD = 42;
+
 // The four bands plus an explicit unknown. Keep the unknown: a silent fallback
 // to green is the single most dangerous thing this board could do.
 enum class Band : uint8_t { Green, Yellow, Red, Purple, Unknown };
@@ -105,13 +114,15 @@ constexpr size_t MAX_FRAME = 256;
 // One line at text size 1 is 6 px per glyph across 128 px.
 constexpr size_t MSG_COLS = OLED_W / 6;
 
-const char *band_name(Band b) {
+// How many beats the trace draws in one cycle. The shape IS the band, so there is
+// no word to read: a flat line is green, one beat is a yellow finding, two is
+// red, and purple draws red's pattern twice because it is red with more of it.
+int beats_for(Band b) {
   switch (b) {
-    case Band::Green:  return "GREEN";
-    case Band::Yellow: return "YELLOW";
-    case Band::Red:    return "RED";
-    case Band::Purple: return "PURPLE";
-    default:           return "----";
+    case Band::Yellow: return 1;
+    case Band::Red:    return 2;
+    case Band::Purple: return 4;
+    default:           return 0;   // green, and anything unrecognised
   }
 }
 
@@ -333,8 +344,9 @@ void screen_sig(char *out, size_t n) {
     snprintf(out, n, "LOST|%lu|%s",
              static_cast<unsigned long>((millis() - g.last_rx) / 1000), transport_word());
   } else {
-    snprintf(out, n, "OK|%d|%d|%d|%s|%s|%d%d%d%d", g.score, static_cast<int>(g.band), g.open,
-             g.msg, transport_word(), node_up[0], node_up[1], node_up[2], node_up[3]);
+    snprintf(out, n, "OK|%d|%d|%d|%s|%s|%d%d%d%d|%lu", g.score, static_cast<int>(g.band), g.open,
+             g.msg, transport_word(), node_up[0], node_up[1], node_up[2], node_up[3],
+             static_cast<unsigned long>((millis() / 60) % TRACE_PERIOD));
   }
 }
 
@@ -577,21 +589,21 @@ void draw_lost() {
 // dashboard uses for its own fleet readout, so the shelf and the console agree
 // box for box instead of telling two different stories.
 void draw_nodes(int16_t y0) {
-  constexpr int16_t boxW = 38, boxH = 11, gap = 2;
-  constexpr int16_t x0 = 0;
+  constexpr int16_t boxW = 22, boxH = 14, gap = 1, colGap = 1;
 
   oled.setTextSize(1);
   for (size_t i = 0; i < 4; i++) {
-    const int16_t y = y0 + static_cast<int16_t>(i) * (boxH + gap);
+    const int16_t x = static_cast<int16_t>(i % 2) * (boxW + colGap);
+    const int16_t y = y0 + static_cast<int16_t>(i / 2) * (boxH + gap);
     if (node_up[i]) {
-      oled.fillRect(x0, y, boxW, boxH, SSD1306_WHITE);
+      oled.fillRect(x, y, boxW, boxH, SSD1306_WHITE);
       oled.setTextColor(SSD1306_BLACK);
     } else {
-      oled.drawRect(x0, y, boxW, boxH, SSD1306_WHITE);
+      oled.drawRect(x, y, boxW, boxH, SSD1306_WHITE);
       oled.setTextColor(SSD1306_WHITE);
     }
-    oled.setCursor(x0 + 4, y + 2);
-    oled.print(NODES[i]);
+    oled.setCursor(x + 5, y + 3);
+    oled.print(SHORT_NODES[i]);
     oled.setTextColor(SSD1306_WHITE);
   }
 }
@@ -603,6 +615,45 @@ const char *status_word(LedMode m) {
     case LedMode::Action: return "LOCKDOWN";
     case LedMode::Normal: return "NORMAL";
     default:              return "OFFLINE";
+  }
+}
+
+// The band, drawn rather than spelled out: a trace across the bottom of the panel
+// that scrolls right to left like a monitor.
+//
+// The shape is the reading. A flat line is green; one beat is a yellow finding;
+// two beats is red; four is purple, which is red's pattern twice for the same
+// reason a purple alert is a red one that got worse. Nothing is written down, so
+// the reading survives a photograph and a colour-blind operator equally well --
+// and the pixel is carrying the same band in colour at the same moment.
+void draw_trace(int16_t y0, int16_t h) {
+  const int16_t base = y0 + h - 1;
+
+  // The baseline is always drawn, so a flat band and a beating one share a
+  // reference and the eye reads the difference rather than the position.
+  oled.drawFastHLine(0, base, OLED_W, SSD1306_WHITE);
+
+  const int beats = beats_for(g.band);
+  if (beats == 0) return;   // green: flat, and that is the whole signal
+
+  // One cycle lasts TRACE_PERIOD pixels and slides left as time passes.
+  const int scroll = static_cast<int>((millis() / 60) % TRACE_PERIOD);
+  const int beat_len = TRACE_PERIOD / beats;
+  const int spike = beat_len / 3;
+  const int half = spike / 2;
+  if (half < 1) return;
+  const int peak = h - 4;
+
+  // Connect each column to the one before it, or a steep spike reads as a dotted
+  // line rather than as a trace.
+  int prev = 0;
+  for (int x = 0; x < OLED_W; x++) {
+    const int p = (x + scroll) % TRACE_PERIOD;
+    const int up = p < spike ? peak * (p < half ? p : spike - 1 - p) / half : 0;
+    const int lo = up < prev ? up : prev;
+    const int hi = up < prev ? prev : up;
+    for (int yy = lo; yy <= hi; yy++) oled.drawPixel(x, base - yy, SSD1306_WHITE);
+    prev = up;
   }
 }
 
@@ -622,28 +673,24 @@ void draw() {
   oled.print(F("ULTRON"));
   oled.drawLine(0, 10, OLED_W - 1, 10, SSD1306_WHITE);
 
-  // The fleet, stacked down the left-hand corner.
-  draw_nodes(14);
+  // The fleet, as one small two-by-two block in the corner.
+  draw_nodes(12);
 
-  // The score, on the right and at an ordinary size. Fixed width, so it does
-  // not slide sideways between 9 and 100.
+  // The score, on the right and at an ordinary size. Fixed width, so it does not
+  // slide sideways between 9 and 100.
   char sb[8];
   snprintf(sb, sizeof(sb), "%3d", g.score);
   oled.setTextSize(3);
-  oled.setCursor(OLED_W - 3 * 18 - 2, 18);
+  oled.setCursor(OLED_W - 3 * 18 - 2, 12);
   oled.print(sb);
 
-  // The band, as a word in an inverted box under the score: the same colour the
-  // LED is showing, spelled out for anyone who cannot tell the colours apart and
-  // for anyone looking at a photograph of the shelf afterwards.
-  const char *bn = band_name(g.band);
-  const int16_t bw = static_cast<int16_t>(strlen(bn)) * 6 + 8;
-  const int16_t bx = OLED_W - bw;
-  oled.fillRect(bx, 46, bw, 13, SSD1306_WHITE);
-  oled.setTextColor(SSD1306_BLACK);
-  oled.setCursor(bx + 4, 49);
-  oled.print(bn);
-  oled.setTextColor(SSD1306_WHITE);
+  // What the board thinks is happening, in the same words the LED is showing.
+  oled.setTextSize(1);
+  oled.setCursor(OLED_W - 3 * 18 - 2, 37);
+  oled.print(status_word(led_mode));
+
+  // And the band, drawn across the full width as a trace.
+  draw_trace(45, 19);
 
   oled.display();
 }
@@ -659,6 +706,9 @@ bool oled_begin() {
 
   for (size_t p = 0; p < sizeof(pairs) / sizeof(pairs[0]); p++) {
     Wire.begin(pairs[p][0], pairs[p][1]);
+    // 400 kHz: a full 1 KB frame takes about 20 ms instead of 100, which is what
+    // lets the trace animate without the panel spending its life on the bus.
+    Wire.setClock(400000);
     delay(20);   // let the bus settle before the first probe
 
     uint8_t addr = 0;
@@ -751,8 +801,8 @@ void loop() {
   if (static_cast<int32_t>(millis() - next_draw) < 0) return;
   next_draw = millis() + REDRAW_MS;
 
-  static char shown_sig[96] = "";
-  char sig[96];
+  static char shown_sig[128] = "";
+  char sig[128];
   screen_sig(sig, sizeof(sig));
   if (strcmp(sig, shown_sig) != 0) {
     strncpy(shown_sig, sig, sizeof(shown_sig) - 1);

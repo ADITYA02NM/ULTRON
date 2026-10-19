@@ -79,15 +79,32 @@ and `[boot] wall-e` when it hands over.
 | Region | Content |
 |--------|---------|
 | top | heading `ULTRON`, with a hairline under it |
-| **left corner** | the fleet: four boxes, `pi4` `pi3a` `pi3b` `esp32` — filled when that node is reporting, outlined when it is not |
+| **left** | the fleet as a 2×2 block: `P4` `3A` / `3B` `C3` — filled when that node is reporting, outlined when it is not |
 | **right** | the risk score, three digits, fixed width so it does not slide between `9` and `100` |
-| bottom right | the band as an **inverted word** — `GREEN` `YELLOW` `RED` `PURPLE` |
+| under the score | the status word — `NORMAL` `DETECT` `ALERT` `LOCKDOWN` `OFFLINE` |
+| **bottom, full width** | the band as a **trace** — see below |
 
-The four fleet boxes are fed by `ultron/health/<node>` and follow the same
-highlight the dashboard uses, so the shelf and the console agree box for box.
+The four fleet squares are fed by `ultron/health/<node>` and follow the same
+highlight the dashboard uses, so the shelf and the console agree box for box. The
+names are abbreviated because a square small enough to leave the trace its room
+cannot hold `esp32`.
 
-Colour alone carries no information to a colour-blind operator and none at all in
-a photograph of the shelf, which is why the band is a word as well as a tint.
+## The trace
+
+The band is drawn, not spelled out. A trace scrolls across the bottom of the
+panel the way it would on a monitor, and **the shape is the reading**:
+
+| Band | Trace |
+|------|-------|
+| `GREEN` | flat |
+| `YELLOW` | one beat |
+| `RED` | two beats |
+| `PURPLE` | four beats — red's pattern twice, because a purple alert is a red one that got worse |
+
+Nothing is written down, so the reading survives a photograph and a colour-blind
+operator equally well — and the pixel is carrying the same band in colour at the
+same moment. The baseline is always drawn, so a flat band and a beating one share
+a reference and the eye reads the difference rather than the position.
 
 ## Why it goes to sleep
 
