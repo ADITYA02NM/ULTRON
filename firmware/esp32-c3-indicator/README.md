@@ -97,9 +97,16 @@ panel the way it would on a monitor, and **the shape is the reading**:
 | Band | Trace |
 |------|-------|
 | `GREEN` | flat |
-| `YELLOW` | one beat |
-| `RED` | two beats |
-| `PURPLE` | four beats — red's pattern twice, because a purple alert is a red one that got worse |
+| `YELLOW` | one beat — one tick per 42 px |
+| `RED` | two beats — one tick per 21 px |
+| `PURPLE` | four beats — one tick per 14 px, red's pattern at double the rate, because a purple alert is a red one that got worse |
+
+A beat is the same tick in every band, so what you read is the **rate**, not the
+shape: sparse is yellow, tighter is red, tightest is purple. The tick is
+deliberately narrow — widening it does not make a fatter spike, it makes a broken
+one, because the column-to-column join that keeps a steep edge connected only
+bridges neighbouring columns, so a wide triangle splits into two separate strokes
+with a hole between them.
 
 Nothing is written down, so the reading survives a photograph and a colour-blind
 operator equally well — and the pixel is carrying the same band in colour at the

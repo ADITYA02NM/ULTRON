@@ -87,9 +87,10 @@ bool node_up[4] = {false, false, false, false};
 // order as NODES: pi4, pi3a, pi3b, and the C3 board.
 const char *const SHORT_NODES[4] = {"P4", "3A", "3B", "C3"};
 
-// Width in pixels of one full cycle of the heartbeat pattern. Shared with
-// screen_sig, so a flat band does not repaint the panel and a beating one does.
-constexpr int TRACE_PERIOD = 42;
+// A scroll bucket for screen_sig, so the panel repaints whenever the trace has
+// moved. Larger than any band's cycle, which over-repaints and never
+// under-repaints -- the safe direction.
+constexpr int TRACE_PERIOD = 56;
 
 // The four bands plus an explicit unknown. Keep the unknown: a silent fallback
 // to green is the single most dangerous thing this board could do.
@@ -636,19 +637,31 @@ void draw_trace(int16_t y0, int16_t h) {
   const int beats = beats_for(g.band);
   if (beats == 0) return;   // green: flat, and that is the whole signal
 
-  // One cycle lasts TRACE_PERIOD pixels and slides left as time passes.
-  const int scroll = static_cast<int>((millis() / 60) % TRACE_PERIOD);
-  const int beat_len = TRACE_PERIOD / beats;
-  const int spike = beat_len / 3;
-  const int half = spike / 2;
-  if (half < 1) return;
+  // A beat is the same shape in every band: a crisp tick standing on the baseline.
+  // What changes is the rate. Yellow is one beat with a long flat run after it, red
+  // is two, and purple is red's shape again at double the rate -- which is what a
+  // purple alert is, a red one that got worse.
+  //
+  // The tick is deliberately narrow. Widening it does not make a fatter spike, it
+  // makes a broken one: the column-connect below only bridges neighbouring columns,
+  // so a triangle more than a couple of columns wide splits into two separate
+  // strokes with a hole between them.
+  const int pitch = beats == 1 ? 42 : (beats == 2 ? 21 : 14);
+  const int period = pitch * beats;
+  constexpr int spike = 3;
+  constexpr int half = spike / 2;
   const int peak = h - 4;
+
+  // The cycle slides left as time passes, scrolling the trace like a monitor.
+  const int scroll = static_cast<int>((millis() / 60) % period);
 
   // Connect each column to the one before it, or a steep spike reads as a dotted
   // line rather than as a trace.
   int prev = 0;
   for (int x = 0; x < OLED_W; x++) {
-    const int p = (x + scroll) % TRACE_PERIOD;
+    // Where this column sits inside one beat: `pitch` px, with the spike at the
+    // front of it.
+    const int p = (x + scroll) % pitch;
     const int up = p < spike ? peak * (p < half ? p : spike - 1 - p) / half : 0;
     const int lo = up < prev ? up : prev;
     const int hi = up < prev ? prev : up;
