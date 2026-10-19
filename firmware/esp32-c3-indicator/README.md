@@ -62,11 +62,11 @@ every time:
 | 180 ms | one quick blink |
 | 2200 ms | the grin, and a slow bob, and then the readout takes over |
 
-Nothing slides. Wall-E's eyes are fixed lenses on a head that pivots, so the turn
-is drawn as perspective instead: the eye on the side he turns towards swings
-round to face you and **grows**, while the far eye foreshortens and **shrinks**.
-Two opaque discs changing size in opposite directions read as a head turning — a
-ring outline reads as a hole in the face and carries none of it.
+Nothing changes shape. Once the eyes are opaque discs there is no pupil to point
+and nothing worth resizing, so the turn is carried by the pair itself: it
+**slides** about ten pixels in the direction he is looking, and it **leans**, so
+the head tilts into the movement — the eye on the side he turns towards rides up
+and the far one drops. Neither eye grows or shrinks at any point.
 
 The eyes are **solid, not rings with a pupil inside**, and the blink and the slow
 bob are what stop the face reading as a drawing. The pixel pulses blue

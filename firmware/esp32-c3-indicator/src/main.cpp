@@ -431,19 +431,18 @@ float smoothstep01(float p) { return p * p * (3.0f - 2.0f * p); }
 // A pair of eyes that can turn, `turn` running -1 (looking to the left of the
 // screen) through 0 (facing straight out) to +1.
 //
-// The turn is sold by perspective, not by sliding the pupils: the eye on the
-// side he turns towards swings round to face the viewer and grows, while the far
-// eye foreshortens and shrinks. Two circles changing size in opposite directions
-// read as a head turning -- which is what Wall-E does, because his eyes are fixed
-// lenses on a head that pivots rather than balls that roll in a socket.
+// The eyes are opaque discs, so there is no pupil to point and nothing worth
+// resizing: the turn is carried by the pair itself. It slides a long way in the
+// direction he is looking, which is what "he is looking over there" actually
+// reads as, and it leans, so the head tilts into the movement -- the eye on the
+// side he turns towards rides up and the far one drops. Neither eye changes
+// shape at any point.
 void draw_eyes(float turn, float open_amt) {
   constexpr int cy = 30, R = 15, cxA = 40, cxB = 88;
-  const int rA = R - static_cast<int>(turn * 4.5f);
-  const int rB = R + static_cast<int>(turn * 4.5f);
-  // The whole pair also leans a few pixels into the turn.
-  const int shift = static_cast<int>(turn * 3.0f);
-  draw_eye(cxA + shift, cy, rA, open_amt);
-  draw_eye(cxB + shift, cy, rB, open_amt);
+  const int shift = static_cast<int>(turn * 10.0f);
+  const int tilt = static_cast<int>(turn * 4.0f);
+  draw_eye(cxA + shift, cy + tilt, R, open_amt);
+  draw_eye(cxB + shift, cy - tilt, R, open_amt);
 }
 
 // An eye that reads as happy rather than shut: the same arc the lid draws, but
