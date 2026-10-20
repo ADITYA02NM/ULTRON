@@ -362,9 +362,22 @@ def run(args: argparse.Namespace) -> int:
 
     threading.Thread(target=summary_loop, daemon=True, name="summary").start()
 
+    started = time.time()
+
     try:
         while True:
-            time.sleep(1)
+            # Heartbeat for the hardware panel. On the laptop rig this process
+            # *is* Pi3b -- it records every alert, acknowledges it durably and
+            # sends the mail -- so the tile has something true to show instead
+            # of the blank "no data" card it used to render forever.
+            up = int(time.time() - started) + 1
+            try:
+                link.publish("ultron/health/pi3b",
+                             {"node": "pi3b", "up": up, "services": ["alert", "mail"]},
+                             retain=True)
+            except Exception:  # noqa: BLE001 - a heartbeat must never kill the node
+                LOG.debug("health publish failed", exc_info=True)
+            time.sleep(5)
     except KeyboardInterrupt:
         LOG.info("stopping alert manager")
     finally:

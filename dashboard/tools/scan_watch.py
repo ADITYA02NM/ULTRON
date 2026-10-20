@@ -108,6 +108,88 @@ def main() -> int:
     client.connect(args.host, args.port, keepalive=30)
     client.loop_start()
 
+    started = time.time()
+    esp_seen: dict[str, float] = {}
+
+    def mqtt_peers() -> list[str]:
+        """Remote clients holding an MQTT session on this broker.
+
+        The indicator is the only off-host subscriber in this rig, so a peer
+        that is not loopback is the board saying it is alive. That is an
+        observation rather than an assumption -- the board publishes nothing.
+        """
+        try:
+            out = subprocess.run(
+                ["ss", "-tnH", "state", "established", "( sport = :1883 )"],
+                capture_output=True, text=True, timeout=2,
+            ).stdout
+        except (OSError, subprocess.SubprocessError):
+            return []
+        peers: list[str] = []
+        for line in out.splitlines():
+            parts = line.split()
+            if len(parts) < 4:
+                continue
+            peer = parts[-1].rsplit(":", 1)[0]
+            if peer and not peer.startswith("127.") and peer not in peers:
+                peers.append(peer)
+        return peers
+
+    def announce_self() -> None:
+        """Put this host on the topology map.
+
+        Without it the graph opens on "Awaiting ARP" even though the appliance
+        is plainly on the wire -- an empty map reads as a broken sensor.
+        """
+        try:
+            out = subprocess.run(["ip", "-4", "route", "get", "1.1.1.1"],
+                                 capture_output=True, text=True, timeout=2).stdout
+            words = out.split()
+            ip = words[words.index("src") + 1] if "src" in words else ""
+            dev = words[words.index("dev") + 1] if "dev" in words else ""
+            mac = ""
+            if dev:
+                with open(f"/sys/class/net/{dev}/address", encoding="utf-8") as fh:
+                    mac = fh.read().strip()
+        except (OSError, ValueError, subprocess.SubprocessError):
+            return
+        if not ip or not mac:
+            return
+        stamp = int(time.time())
+        client.publish(LAN_TOPIC, json.dumps({"mac": mac, "ip": ip,
+                                              "vendor": "ultron-appliance",
+                                              "known": True,
+                                              "first_seen": stamp,
+                                              "last_seen": stamp}),
+                       qos=1, retain=True)
+
+    def health_loop() -> None:
+        """Keep the hardware panel honest about the roles this rig plays.
+
+        On the laptop this sensor stands in for two nodes: it emits the
+        Suricata-shaped detection event (Pi3a) and it publishes the verdict
+        (Pi4). Both are real work happening right here, so a heartbeat for
+        each is a statement of fact rather than decoration.
+        """
+        announce_self()
+        while True:
+            up = int(time.time() - started) + 1
+            for node in ("pi4", "pi3a"):
+                client.publish(f"ultron/health/{node}",
+                               json.dumps({"node": node, "up": up,
+                                           "services": ["ok"]}),
+                               qos=0, retain=True)
+            for peer in mqtt_peers():
+                first = esp_seen.setdefault(peer, time.time())
+                client.publish("ultron/health/esp32",
+                               json.dumps({"node": "esp32",
+                                           "up": int(time.time() - first) + 1,
+                                           "services": ["mqtt"]}),
+                               qos=0, retain=True)
+            time.sleep(5)
+
+    threading.Thread(target=health_loop, daemon=True, name="health").start()
+
     def publish(score: int, band: str, open_n: int, msg: str,
                 title: str = "Port sweep detected",
                 **extra: object) -> str | None:
