@@ -32,6 +32,11 @@ import time
 import paho.mqtt.client as mqtt
 
 FRAME_TOPIC = "ultron/risk/frame"
+# The dashboard's WebSocket bridge subscribes to these two scalars, not to the
+# frame topic -- the frame is what the ESP32 renders. Publishing all three is
+# what makes one sweep move both screens at once.
+SCORE_TOPIC = "ultron/risk/score"
+BAND_TOPIC = "ultron/risk/band"
 
 # `10.0.0.5.51234 > 10.0.0.1.80: Flags [S], ...`  -- the dot before the port is
 # the separator tcpdump uses, so the port is the trailing digits.
@@ -72,6 +77,20 @@ def main() -> int:
         import json
         body = json.dumps({"score": score, "band": band, "open": open_n, "msg": msg})
         client.publish(FRAME_TOPIC, body, qos=1, retain=True)
+        # The panel renders the frame; the dashboard renders the two scalars.
+        # Both, retained, or only one of the screens moves.
+        client.publish(SCORE_TOPIC, json.dumps({"v": score}), qos=1, retain=True)
+        client.publish(BAND_TOPIC, json.dumps({"b": band}), qos=1, retain=True)
+        # A score bump is not an event: the dashboard's log is driven by
+        # ultron/alert/#, so without this the sweep changes colour and nothing
+        # else. Only the alert is emitted; the recovery is silent, because a
+        # cleared sweep is not something an operator needs in the log.
+        if band == "RED":
+            aid = f"scan-{int(time.time())}"
+            alert = {"id": aid, "sev": "crit", "title": "Port sweep detected",
+                     "src": "scan_watch/eth0", "body": msg,
+                     "ts": int(time.time()), "ack": False}
+            client.publish(f"ultron/alert/{aid}", json.dumps(alert), qos=1)
         print(f"[scan_watch] -> {body}", flush=True)
 
     # -l line-buffers, which matters when stdout is a pipe. A bare SYN is
