@@ -18,6 +18,16 @@ const SKIP_KEY = "ultron_skip_auth";
 // frame; set to 0 to remove the hold entirely.
 const BOOT_HOLD = 900;
 
+/** WebAuthn only exists in a secure context: HTTPS, or localhost. Opened over
+ *  plain HTTP at a LAN address the browser exposes no `navigator.credentials`,
+ *  and calling `.get()` on it throws "Cannot read properties of undefined
+ *  (reading 'get')" -- which reads to the operator as "no passkey" rather than
+ *  as a browser rule. Probe once so the screens can say what is actually wrong. */
+const WEBAUTHN = typeof navigator !== "undefined" && Boolean(navigator.credentials);
+const ORIGIN_HINT =
+  "Passkeys need a secure origin. Open http://localhost:8080 on this machine, "
+  + "or serve the dashboard over HTTPS. On the LAN demo rig, use the access code below.";
+
 /** Every successful sign-in path funnels through here: wipe anything left over
  *  from a previous session, then open the dashboard. */
 function signedIn(): void {
@@ -76,6 +86,7 @@ function SetupScreen({ onDone }: { onDone?: () => void }) {
   const [busy, setBusy] = useState(false);
 
   async function handleSetup() {
+    if (!WEBAUTHN) { setStatus(ORIGIN_HINT); return; }
     setBusy(true);
     setStatus("Requesting registration…");
     try {
@@ -108,10 +119,11 @@ function SetupScreen({ onDone }: { onDone?: () => void }) {
         Create the owner passkey for this dashboard. On a laptop you can choose
         “Use a phone” and scan the QR, then approve with your fingerprint.
       </p>
-      <button className="auth-btn" onClick={handleSetup} disabled={busy} autoFocus>
+      <button className="auth-btn" onClick={handleSetup} disabled={busy || !WEBAUTHN} autoFocus>
         Register your passkey
       </button>
       {status && <div className="auth-status" role="status">{status}</div>}
+      {!WEBAUTHN && <div className="auth-status" role="alert">{ORIGIN_HINT}</div>}
     </AuthLayout>
   );
 }
@@ -123,6 +135,7 @@ function LoginScreen() {
   const [codeBusy, setCodeBusy] = useState(false);
 
   async function handleLogin() {
+    if (!WEBAUTHN) { setStatus(ORIGIN_HINT); return; }
     setBusy(true);
     setStatus("Starting authentication...");
     try {
@@ -156,10 +169,11 @@ function LoginScreen() {
 
   return (
     <AuthLayout>
-      <button className="auth-btn" onClick={handleLogin} disabled={busy} autoFocus>
+      <button className="auth-btn" onClick={handleLogin} disabled={busy || !WEBAUTHN} autoFocus>
         Unlock with passkey
       </button>
       {status && <div className="auth-status" role="status">{status}</div>}
+      {!WEBAUTHN && <div className="auth-status" role="alert">{ORIGIN_HINT}</div>}
       <div className="auth-demo">
         <span className="auth-hint">Demo rig on the LAN?</span>
         <input
