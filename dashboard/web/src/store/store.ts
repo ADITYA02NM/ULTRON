@@ -2,7 +2,7 @@ import { useCallback, useRef, useSyncExternalStore } from "react";
 import type { AlertD, Band, EventD, Envelope, LanD } from "../contracts/ws";
 import { isWorse } from "../lib/bands";
 import { ClockSync, LatencyWindow } from "../lib/latency";
-import { readPrefs, writePrefs } from "../lib/prefs";
+import { clearTopology, readPrefs, readTopology, writePrefs, writeTopology } from "../lib/prefs";
 
 export type Conn = "live" | "stale" | "offline";
 
@@ -87,6 +87,9 @@ export interface State {
 
 const MAX_ALERTS = 200;
 const MAX_EVENTS = 500;
+/** How many raw rows survive the operator's RESET. Enough that the log never
+ *  looks dead, few enough that the reset still reads as a reset. */
+const KEEP_AFTER_RESET = 5;
 const MAX_DEVICES = 500;
 const MAX_CMD_HISTORY = 100;
 
@@ -109,7 +112,7 @@ function initial(): State {
     nodes: {}, layers: { idsCount: 0, idsLast: 0, lanToday: 0, wifiRogue: false, wifiLast: 0, tripLast: 0, tripSeq: 0 },
     pipeline: { detect: 0, govern: 0, alert: 0 },
     latencyLast: 0, latencyP95: 0, clockReady: false, clockUncertaintyMs: Infinity, lastToast: null,
-    events: [], devices: {}, commandHistory: [], muteUntil: 0,
+    events: [], devices: readTopology<LanDevice>(), commandHistory: [], muteUntil: 0,
     focusNode: typeof p.focusNode === "string" ? p.focusNode : null,
     eventFilter: typeof p.eventFilter === "string" ? p.eventFilter : "all",
     showDevices: p.showDevices === true,
@@ -154,7 +157,32 @@ export class Store {
    *  phase itself is preserved — setAuth() owns that. */
   reset(): void {
     const { authPhase, authHasOwner } = this.state;
-    this.state = { ...initial(), authPhase, authHasOwner };
+    // An auth boundary is the one place the topology goes too: the next
+    // operator must not be handed a map of the previous one's network.
+    clearTopology();
+    this.state = { ...initial(), authPhase, authHasOwner, devices: {} };
+    this.seen.clear();
+    this.emit();
+  }
+
+  /** The operator's RESET — the button in the header.
+   *
+   *  Clears the drill, the alerts, the counters and the event log, but keeps
+   *  the topology and the last few raw rows. The devices on the wire are
+   *  observed fact rather than session state, and a console that goes
+   *  completely blank afterwards reads as a lost network rather than a clean
+   *  one. `reset()` above remains the full wipe for auth boundaries. */
+  resetConsole(): void {
+    const { authPhase, authHasOwner, devices, events } = this.state;
+    const kept = events.slice(0, KEEP_AFTER_RESET);
+    this.state = {
+      ...initial(),
+      authPhase,
+      authHasOwner,
+      devices,
+      events: kept,
+      eventCount: kept.length,
+    };
     this.seen.clear();
     this.emit();
   }
@@ -273,8 +301,14 @@ export class Store {
         case "score": {
           const v = (env.d as { v: number }).v;
           s.score = v; s.scoreTs = env.ts;
-          s.history = s.history.concat([[env.ts, v]]);
-          if (s.history.length > 2880) s.history = s.history.slice(-2880);
+          // The retained broker value and the vault replay can both arrive, and
+          // a duplicate sample draws as a flat step that makes the live head
+          // stutter. Only record a genuinely new point.
+          const last = s.history[s.history.length - 1];
+          if (!last || last[0] !== env.ts || last[1] !== v) {
+            s.history = s.history.concat([[env.ts, v]]);
+            if (s.history.length > 2880) s.history = s.history.slice(-2880);
+          }
           s.pipeline.govern = env.ts;
           break;
         }
@@ -303,8 +337,19 @@ export class Store {
           break;
         }
         case "history": {
-          s.history = (env.d as { points: Array<[number, number]> }).points.slice();
-          if (s.history.length) s.score = s.history[s.history.length - 1]![1];
+          const replayed = (env.d as { points: Array<[number, number]> }).points;
+          // The replay is older than what the live feed has already delivered.
+          // Replacing wholesale dropped the samples that arrived while the
+          // socket was still joining, and the line visibly jumped backwards.
+          const merged = new Map<number, number>(replayed);
+          for (const [ts, v] of s.history) merged.set(ts, v);
+          s.history = [...merged.entries()].sort((a, b) => a[0] - b[0]);
+          // A live score outranks a replayed one. The history table lags the
+          // wire, and adopting its last point would snap a recovered GREEN
+          // back to the RED that prompted the drill.
+          if (s.history.length && s.scoreTs === 0) {
+            s.score = s.history[s.history.length - 1]![1];
+          }
           break;
         }
         case "health": {
@@ -335,6 +380,9 @@ export class Store {
               firstSeen: existing?.firstSeen ?? (d.first_seen ?? env.ts),
               lastSeen: d.last_seen ?? env.ts,
             };
+            // Remembered across reloads: the server does not replay devices on
+            // join, so this is what makes the map paint on the first frame.
+            writeTopology(s.devices);
           }
           break;
         }

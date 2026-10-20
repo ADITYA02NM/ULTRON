@@ -69,3 +69,52 @@ export function clearPrefs(): void {
     /* best effort, same as writePrefs */
   }
 }
+
+const TOPOLOGY_KEY = "ultron.topology";
+
+/**
+ * The LAN devices the console has actually observed, remembered across reloads.
+ *
+ * The server replays history and unacknowledged alerts when an operator joins,
+ * but it does not replay devices -- those are published once, as they are seen.
+ * Without this the topology map is blank on every reload until something new
+ * appears on the wire, which reads as a broken sensor rather than a quiet
+ * network. Kept under its own key on purpose: RESET clears the event log and
+ * the view preferences, but the topology is observed fact and survives.
+ */
+export function readTopology<T>(): Record<string, T> {
+  const s = storage();
+  if (!s) return {};
+  try {
+    const raw = s.getItem(TOPOLOGY_KEY);
+    if (!raw) return {};
+    const parsed: unknown = JSON.parse(raw);
+    return typeof parsed === "object" && parsed !== null
+      ? (parsed as Record<string, T>)
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+export function writeTopology(devices: Record<string, unknown>): void {
+  const s = storage();
+  if (!s) return;
+  try {
+    s.setItem(TOPOLOGY_KEY, JSON.stringify(devices));
+  } catch {
+    /* best effort: a topology that cannot be stored is not an error */
+  }
+}
+
+/** Only the auth boundary calls this. A fresh operator must not inherit the
+ *  previous one's map, so sign-out wipes it along with the rest of the state. */
+export function clearTopology(): void {
+  const s = storage();
+  if (!s) return;
+  try {
+    s.removeItem(TOPOLOGY_KEY);
+  } catch {
+    /* best effort, same as clearPrefs */
+  }
+}

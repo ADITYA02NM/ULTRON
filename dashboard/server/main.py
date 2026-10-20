@@ -1,6 +1,6 @@
 """ULTRON dashboard web server (Pi4 — GOVERNANCE).
 
-Routes: /  /assets/*  /debug.html  /ws  /healthz  /auth/*
+Routes: /  /assets/*  /debug.html  /info.html  /ws  /healthz  /auth/*
 (+ /favicon.ico and a SPA fallback — justified in use.md).
 
 Serves the built React app, bridges MQTT<->/ws, replays history + acked alerts
@@ -126,6 +126,22 @@ async def handle_debug(request: web.Request) -> web.Response:
     page = request.app.get("debug_page")
     if page is None:
         raise web.HTTPNotFound(text="debug.html missing")
+    body, policy = page
+    resp = web.Response(text=body, content_type="text/html", charset="utf-8")
+    resp.headers["Cache-Control"] = "no-store"
+    return csp.apply(resp, policy)
+
+
+async def handle_info(request: web.Request) -> web.Response:
+    """The risk-engine reference page.
+
+    Served without the /debug.html gate: it explains how a score is made, not
+    what this host is doing right now, and an operator reading it is exactly the
+    person who should be able to reach it.
+    """
+    page = request.app.get("info_page")
+    if page is None:
+        raise web.HTTPNotFound(text="info.html missing")
     body, policy = page
     resp = web.Response(text=body, content_type="text/html", charset="utf-8")
     resp.headers["Cache-Control"] = "no-store"
@@ -446,6 +462,18 @@ def create_app(cfg: Config | None = None) -> web.Application:
     else:
         app["debug_page"] = None
 
+    # reference page for the risk engine — documentation, so no debug gate
+    if cfg.info_html.exists():
+        info_html = cfg.info_html.read_text(encoding="utf-8")
+        app["info_page"] = (
+            info_html,
+            csp.build_csp_for_html(info_html, tls=cfg.tls_enabled, rp_id=cfg.rp_id,
+                                   https_port=cfg.https_port),
+        )
+        LOG.info("info.html loaded from %s", cfg.info_html)
+    else:
+        app["info_page"] = None
+
     # phone-friendly alert feed page
     if cfg.alerts_html.exists():
         alerts_html = cfg.alerts_html.read_text(encoding="utf-8")
@@ -467,6 +495,7 @@ def create_app(cfg: Config | None = None) -> web.Application:
         web.get("/alerts", handle_alerts_page),
         web.get("/alerts.json", handle_alerts),
         web.get("/debug.html", handle_debug),
+        web.get("/info.html", handle_info),
         web.get("/favicon.ico", handle_favicon),
         web.get("/assets/{tail:.*}", handle_asset),
         web.get("/", handle_index),

@@ -141,9 +141,92 @@ class Vault:
                             (ts or int(time.time()), int(score)))
             self.db.commit()
 
+    def latest_alert(self) -> dict | None:
+        """The alert that arrived most recently.
+
+        Read back from the vault rather than remembered in the callback, so the
+        band mail is right even when the alert and the band arrive in either
+        order -- and rowid breaks the tie when both landed in the same second.
+        """
+        with self._lock:
+            row = self.db.execute(
+                "SELECT id, ts, sev, title, src, body, ack, ack_ts"
+                " FROM alerts ORDER BY ts DESC, rowid DESC LIMIT 1",
+            ).fetchone()
+        if row is None:
+            return None
+        keys = ("id", "ts", "sev", "title", "src", "body", "ack", "ack_ts")
+        out = dict(zip(keys, row, strict=True))
+        out["ack"] = bool(out["ack"])
+        return out
+
+    def summary(self, limit: int = 5) -> str:
+        """A plain-text digest of the whole vault, for the periodic mail.
+
+        Deliberately four numbers and a short tail rather than a table: it is
+        read on a phone lock screen, and the point is to answer "is anything
+        still open" without opening the dashboard.
+        """
+        with self._lock:
+            total = self.db.execute("SELECT COUNT(*) FROM alerts").fetchone()[0]
+            still_open = self.db.execute(
+                "SELECT COUNT(*) FROM alerts WHERE ack = 0").fetchone()[0]
+            rows = self.db.execute(
+                "SELECT ts, sev, title, src FROM alerts"
+                " ORDER BY ts DESC, rowid DESC LIMIT ?", (limit,)).fetchall()
+            score_row = self.db.execute(
+                "SELECT score FROM scores ORDER BY ts DESC, rowid DESC LIMIT 1",
+            ).fetchone()
+
+        lines = [
+            "ULTRON system summary",
+            "",
+            f"Alerts recorded : {total}",
+            f"Still open      : {still_open}",
+            f"Last risk score : {score_row[0] if score_row else 'none'}",
+            "",
+        ]
+        if rows:
+            lines.append(f"Most recent {len(rows)}:")
+            for ts, sev, title, src in rows:
+                when = time.strftime("%Y-%m-%d %H:%M:%S",
+                                     time.localtime(int(ts)))
+                lines.append(f"  {when}  [{sev or 'info'}]  "
+                             f"{title or '(untitled)'}  ({src or 'unknown'})")
+        else:
+            lines.append("No alerts recorded yet.")
+        return "\n".join(lines)
+
     def close(self) -> None:
         with self._lock:
             self.db.close()
+
+
+def band_body(band: str, alert: dict | None) -> str:
+    """The mail that goes with a band change, carrying the alert that caused it.
+
+    An operator reading this on a phone needs four facts to act -- what fired,
+    how bad it was, where it came from, and what it said -- without opening the
+    dashboard first. When no alert is on record the mail still goes out, because
+    a band change on its own is still news.
+    """
+    lines = [f"Risk band is now {band}.", ""]
+    if alert:
+        when = time.strftime("%Y-%m-%d %H:%M:%S",
+                             time.localtime(int(alert.get("ts") or time.time())))
+        lines += [
+            "Alert that raised it:",
+            f"  Title    {alert.get('title') or '(untitled)'}",
+            f"  Severity {alert.get('sev') or 'info'}",
+            f"  Source   {alert.get('src') or 'unknown'}",
+            f"  Time     {when}",
+            f"  Detail   {alert.get('body') or '(no detail)'}",
+            "",
+        ]
+    else:
+        lines += ["No alert is on record for this change yet.", ""]
+    lines.append("Open the dashboard to review and acknowledge.")
+    return "\n".join(lines)
 
 
 def send_mail(args: argparse.Namespace, subject: str, body: str) -> None:
@@ -242,8 +325,9 @@ def run(args: argparse.Namespace) -> int:
                 LOG.info("band %s -> %s", state["band"], band)
                 state["band"] = band
                 subject = f"ULTRON {band}"
-                body = (f"Risk band is now {band}.\n"
-                        f"Open the dashboard to review and acknowledge.")
+                # Carries the alert that raised the band, so the mail is
+                # actionable on its own -- @55@.
+                body = band_body(band, vault.latest_alert())
                 if band in NOTIFY_BANDS:
                     send_mail(args, subject, body)
                 if band in push_bands:
@@ -264,12 +348,27 @@ def run(args: argparse.Namespace) -> int:
     link.on_message(on_message)
     link.subscribe("ultron/#", qos=1)
 
+    stop = threading.Event()
+
+    def summary_loop() -> None:
+        """Mail a rolling digest every --summary-every seconds."""
+        if args.summary_every <= 0:
+            return
+        while not stop.wait(args.summary_every):
+            try:
+                send_mail(args, "ULTRON summary", vault.summary())
+            except Exception:  # noqa: BLE001 - a summary must never kill the node
+                LOG.exception("could not send summary")
+
+    threading.Thread(target=summary_loop, daemon=True, name="summary").start()
+
     try:
         while True:
             time.sleep(1)
     except KeyboardInterrupt:
         LOG.info("stopping alert manager")
     finally:
+        stop.set()
         link.stop()
         vault.close()
     return 0
@@ -294,6 +393,8 @@ def main(argv: list[str] | None = None) -> int:
                     help="push topic; unset means no push at all")
     ap.add_argument("--push-bands", default="RED,PURPLE",
                     help="comma-separated bands that push a notification")
+    ap.add_argument("--summary-every", type=int, default=0,
+                    help="mail a system summary every N seconds (0 = never)")
     add_mqtt_args(ap)
     args = ap.parse_args(argv)
     setup_logging(args.verbose)

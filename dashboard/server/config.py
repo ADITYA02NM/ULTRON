@@ -55,6 +55,9 @@ class Config:
     dist_dir: Path = field(default_factory=_default_dist)
     debug_html: Path = field(default_factory=_default_debug_html)
     alerts_html: Path = field(default_factory=lambda: _DASHBOARD_DIR / "alerts.html")
+    # The risk-engine reference page. Documentation, not diagnostics, so it is
+    # served without the /debug.html gate.
+    info_html: Path = field(default_factory=lambda: _DASHBOARD_DIR / "debug" / "info.html")
 
     # /debug.html gating: enabled globally, or only from the mgmt subnet with basic auth.
     debug_enabled: bool = _b("ULTRON_DEBUG", False)

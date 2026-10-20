@@ -44,6 +44,10 @@ FRESH=0
 # quiet broker is the honest picture; a demo that is already in progress is not.
 FEED=0
 QR=1
+# The port-sweep sensor is part of the live console, not an add-on: without it a
+# real nmap scan is invisible, which is the first thing a visitor tries. It needs
+# CAP_NET_RAW, so it is skipped with a warning when tcpdump cannot capture.
+SCAN=1
 
 usage() {
   cat <<'EOF'
@@ -52,6 +56,8 @@ ULTRON — one-command local stack (no sudo, no Docker, no Raspberry Pi)
   ./start.sh              mqtt + backend :8081 + vite :5173 (nothing simulated)
   ./start.sh --feed       also start the mock sensor publisher (stress drill)
   ./start.sh --no-feed    never start it (this is the default)
+  ./start.sh --scan       watch the wire for real port sweeps (this is the default)
+  ./start.sh --no-scan    do not run the sweep sensor
   ./start.sh --prod       mqtt + backend :8080 serving the prebuilt dist
   ./start.sh --fresh      wipe auth.db first so the QR enrols a new passkey
   ./start.sh --no-qr      skip QR generation
@@ -73,6 +79,8 @@ for arg in "$@"; do
     --fresh)   FRESH=1 ;;
     --feed)    FEED=1 ;;
     --no-feed) FEED=0 ;;
+    --scan)    SCAN=1 ;;
+    --no-scan) SCAN=0 ;;
     --no-qr)   QR=0 ;;
     -h|--help) usage ;;
     *) echo "start.sh: unknown flag: $arg (try --help)" >&2; exit 2 ;;
@@ -391,6 +399,23 @@ if [ "$FEED" = 1 ]; then
 fi
 
 # ---------------------------------------------------------------------------
+# 8a. Port-sweep sensor (real wire, no simulation)
+#
+#     tcpdump needs CAP_NET_RAW. Rather than failing the whole stack when it is
+#     missing, say so once and carry on: a console that refuses to start because
+#     a capability is absent is worse than one that admits it cannot see scans.
+# ---------------------------------------------------------------------------
+if [ "$SCAN" = 1 ]; then
+  if command -v tcpdump >/dev/null 2>&1 &&
+     { [ "$(id -u)" = 0 ] || getcap "$(command -v tcpdump)" 2>/dev/null | grep -q cap_net_raw; }; then
+    start_bg scan "$REPO" "$PY" -u "$DASH/tools/scan_watch.py" \
+      --host 127.0.0.1 --port 1883
+  else
+    echo "[start] scan: tcpdump cannot capture — run: sudo setcap cap_net_raw,cap_net_admin+eip $(command -v tcpdump 2>/dev/null || echo /usr/bin/tcpdump)"
+  fi
+fi
+
+# ---------------------------------------------------------------------------
 # 8b. Alert manager (Pi3b) — the only writer of the evidence vault
 #
 #     Notification is configured out-of-band so no credential ever lands in git.
@@ -473,6 +498,14 @@ if [ "$PUSH_ON" = 1 ]; then
                 --push-bands "$PUSH_BANDS")
 fi
 
+# A rolling digest every two minutes, so the appliance reports in even when
+# nothing crosses a band. Mail only -- the vault is unchanged either way.
+SUMMARY_EVERY="${ULTRON_SUMMARY_EVERY:-120}"
+case "$SUMMARY_EVERY" in (*[!0-9]*|'') SUMMARY_EVERY=0 ;; esac
+if [ "$MAIL_ON" = 1 ] && [ "$SUMMARY_EVERY" -gt 0 ]; then
+  _alert_args+=(--summary-every "$SUMMARY_EVERY")
+fi
+
 # --dry-run silences BOTH channels, so it may only go on when neither is
 # configured. Sending it for a push-only setup would silently mute the push.
 if [ "$MAIL_ON" = 0 ] && [ "$PUSH_ON" = 0 ]; then
@@ -482,7 +515,7 @@ fi
 start_bg alerts "$REPO" "$PY" -u "$REPO/nodes/pi3b/alert_manager.py" "${_alert_args[@]}"
 
 MAIL_DESC="off — vault only (cp .notify.example .notify)"
-if [ "$MAIL_ON" = 1 ]; then MAIL_DESC="$SMTP_HOST:$SMTP_PORT -> $MAIL_TO  (on RED / PURPLE)"; fi
+if [ "$MAIL_ON" = 1 ]; then MAIL_DESC="$SMTP_HOST:$SMTP_PORT -> $MAIL_TO  (on RED / PURPLE, summary every ${SUMMARY_EVERY}s)"; fi
 PUSH_DESC="off — set PUSH_TOPIC in .notify"
 if [ "$PUSH_ON" = 1 ]; then PUSH_DESC="$PUSH_URL -> $PUSH_TOPIC  ($PUSH_BANDS)"; fi
 
@@ -549,6 +582,7 @@ cat <<EOF
   API / WS    http://localhost:$HTTP_PORT   (proxied /ws, /auth, /healthz, /debug.html)
   MQTT        127.0.0.1:1883
 $( [ "$FEED" = 1 ] && echo "  Mock feed   stress drill, looping forever" || echo "  Mock feed   off — press SIMULATE in the dashboard, or run ./simulate.sh" )
+$( [ "$SCAN" = 1 ] && echo "  Sweep sensor  watching the wire for real port scans" || echo "  Sweep sensor  off" )
   Evidence    dev-evidence.db   (written only by the alerts node)
   Mail        $MAIL_DESC
   Push        $PUSH_DESC

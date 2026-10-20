@@ -219,27 +219,58 @@ function HistoryImpl({ compact }: { compact?: boolean }) {
       // beat, so the line reads as stretching out rather than simply appearing.
       const beat = isLive ? beatMs() : 0;
       const grow = beat ? Math.min(1, (t % beat) / beat) : 1;
-      let headX = 0, headY = h - (hist[hist.length - 1]![1] / 100) * h;
+      const px = (i: number) => ((hist[i]![0] - t0) / span) * w;
+      const py = (i: number) => h - (hist[i]![1] / 100) * h;
+      const headX = px(hist.length - 1);
+      const headY = py(hist.length - 1);
+
+      // The line is drawn as a smooth monotone curve, not straight segments.
+      // A 72 falling to an 8 between two adjacent samples used to be a vertical
+      // cliff, which is exactly what read as the chart glitching. Each span
+      // still takes the colour of the band it lands in.
+      ctx.lineJoin = "round";
+      ctx.lineCap = "round";
       for (let i = 1; i < hist.length; i++) {
-        const x0 = ((hist[i - 1]![0] - t0) / span) * w;
-        const y0 = h - (hist[i - 1]![1] / 100) * h;
-        const y1 = h - (hist[i]![1] / 100) * h;
-        let x1 = ((hist[i]![0] - t0) / span) * w;
-        if (i === hist.length - 1) {
-          if (grow < 1) x1 = x0 + (x1 - x0) * grow;
-          headX = x1; headY = y1;
-        }
+        const x0 = px(i - 1), y0 = py(i - 1), y1 = py(i);
+        let x1 = px(i);
+        if (i === hist.length - 1) x1 = x0 + (x1 - x0) * grow;
+        const mx = (x0 + x1) / 2;
         ctx.strokeStyle = cssVar("--" + bandForScore(hist[i]![1]).toLowerCase());
         ctx.lineWidth = (isLive ? 1.9 : 1.5) * dpr;
         // Oldest fades out, newest is full strength: the eye lands on the drill.
         ctx.globalAlpha = isLive ? 0.3 + 0.7 * (i / hist.length) : 1;
-        ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(x0, y0);
+        ctx.bezierCurveTo(mx, y0, mx, y1, x1, y1);
+        ctx.stroke();
+      }
+
+      // A node per event, coloured by the band that sample sat in, so a scan
+      // reads as a mark on the line rather than a random wiggle. Skipped down
+      // to a stride when the samples are denser than the pixels available.
+      const stride = Math.max(1, Math.ceil(hist.length / Math.max(8, w / (6 * dpr))));
+      for (let i = 0; i < hist.length; i += stride) {
+        const isHead = i === hist.length - 1;
+        const x = isHead ? headX : px(i);
+        const y = isHead ? headY : py(i);
+        const r = (isHead ? 3 : 2.1) * dpr;
+        const colour = cssVar("--" + bandForScore(hist[i]![1]).toLowerCase());
+        ctx.globalAlpha = isLive ? 0.35 + 0.65 * (i / hist.length) : 0.9;
+        ctx.fillStyle = colour;
+        ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+        // A rim keeps each node legible where the line runs behind it.
+        ctx.globalAlpha = 1;
+        ctx.strokeStyle = cssVar("--border");
+        ctx.lineWidth = dpr;
+        ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.stroke();
       }
       if (isLive) {
-        ctx.globalAlpha = 1;
+        // The head breathes, so a live console is visibly alive.
+        ctx.globalAlpha = 0.18;
         ctx.fillStyle = cssVar("--" + bandForScore(hist[hist.length - 1]![1]).toLowerCase());
-        const r = 2 * dpr;
-        ctx.fillRect(headX - r, headY - r, r * 2, r * 2);
+        ctx.beginPath();
+        ctx.arc(headX, headY, 4.5 * dpr + Math.sin(t / 240) * 1.6 * dpr, 0, Math.PI * 2);
+        ctx.fill();
       }
       ctx.globalAlpha = 1;
 

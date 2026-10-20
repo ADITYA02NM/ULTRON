@@ -84,7 +84,7 @@ function HeaderImpl() {
       </button>
       <button
         className="reset-chip"
-        title="Reset the console — stop any drill and forget every event, alert, device and view preference"
+        title="Reset the console — stop any drill and forget every event, alert and view preference (the device map and the last few raw rows stay)"
         onClick={() => {
           // Stop the drill first. reset() clears simRunning locally, but the
           // server carries on pushing sim frames, so the flag would flip back
@@ -95,7 +95,9 @@ function HeaderImpl() {
           // which reads the stored preferences back off disk, so clearing
           // afterwards would leave them applied until the next reload.
           clearPrefs();
-          store.reset();
+          // The operator's reset keeps the observed topology and a few raw
+          // rows; the full wipe belongs to the auth boundary, not this button.
+          store.resetConsole();
         }}
       >
         ⟲ RESET
